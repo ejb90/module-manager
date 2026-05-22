@@ -4,6 +4,26 @@ version = "0.1.0rc3"
 description = "Deploy Python and Rust CLI tools behind GNU environment modulefiles"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    { name = "ejb90" },
+]
+license = "MIT"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
 dependencies = [
     "click>=8.1",
     "rich-click>=1.8",
@@ -20,6 +40,12 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 module-manager = "module_manager.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ejb90/module-manager"
+Documentation = "https://module-manager.readthedocs.io/"
+Tests = "https://app.codecov.io/gh/ejb90/module-manager"
+Repository = "https://github.com/ejb90/module-manager"
 
 [dependency-groups]
 dev = [

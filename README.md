@@ -2,7 +2,7 @@
 
 ![tests](https://github.com/ejb90/module-manager/actions/workflows/test.yml/badge.svg)
 [![Coverage](https://codecov.io/gh/ejb90/module-manager/branch/main/graph/badge.svg)](https://codecov.io/gh/ejb90/module-manager)
-[![License](https://img.shields.io/github/license/ejb90/module-manager)](LICENCE.md)
+[![License](https://img.shields.io/github/license/ejb90/module-manager)](LICENSE)
 ![Ruff](https://img.shields.io/badge/code%20style-ruff-261230)
 [![Documentation](https://readthedocs.org/projects/module-manager/badge/?version=latest)](https://module-manager.readthedocs.io/en/latest/?badge=latest)
 [![PyPI](https://img.shields.io/pypi/v/module-manager)](https://pypi.org/project/module-manager/)

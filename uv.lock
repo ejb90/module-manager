@@ -655,7 +655,7 @@ wheels = [
 
 [[package]]
 name = "module-manager"
-version = "0.1.0"
+version = "0.1.0rc3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
