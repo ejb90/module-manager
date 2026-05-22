@@ -44,6 +44,12 @@ From a local checkout:
 uv tool install .
 ```
 
+From PyPI:
+
+```sh
+uv tool install env-module-manager
+```
+
 During development, use:
 
 ```sh
