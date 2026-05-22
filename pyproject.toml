@@ -1,0 +1,93 @@
+[project]
+name = "module-manager"
+version = "0.1.0"
+description = "Deploy Python and Rust CLI tools behind GNU environment modulefiles"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "rich-click>=1.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+module-manager = "module_manager.cli:main"
+
+[dependency-groups]
+dev = [
+    "mkdocs-material>=9.5",
+    "pytest>=8.0",
+    "pytest-cov>=7.0",
+    "ruff>=0.14",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["module_manager"]
+
+[tool.ruff]
+# Target modern Python
+target-version = "py310"
+line-length = 120
+fix = true
+show-fixes = true
+
+# Exclude common non-source directories
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+    ".mypy_cache",
+    ".pytest_cache",
+]
+
+[tool.ruff.lint]
+# Enable a strict, opinionated rule set
+select = [
+    "F",     # Pyflakes (unused imports, undefined names)
+    "E",     # Pycodestyle errors
+    "W",     # Pycodestyle warnings
+    "I",     # Import sorting (isort)
+    "N",     # PEP8 naming
+    "B",     # Bugbear
+    "C4",    # Comprehension optimisations
+    "UP",    # PyUpgrade
+    "SIM",   # Code simplifications
+    "ARG",   # Unused function arguments
+    "DTZ",   # Datetime timezone issues
+    "RUF",   # Ruff-specific rules
+    "ANN",   # Type annotations
+    "D",     # Docstrings
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+# Fully Black-compatible formatting
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+pythonpath = ["."]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--cov=module_manager",
+    "--cov-report=xml",
+    "--cov-report=term",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-fail-under=90",
+]
