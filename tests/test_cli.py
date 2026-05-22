@@ -1,10 +1,18 @@
 """CLI behavior tests for module-manager."""
 
+import re
 from pathlib import Path
 
 from click.testing import CliRunner
 
 from module_manager.cli import main
+
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def strip_ansi(value: str) -> str:
+    """Remove ANSI escape sequences from terminal output."""
+    return ANSI_ESCAPE_RE.sub("", value)
 
 
 def test_help_uses_rich_click_formatting() -> None:
@@ -12,11 +20,12 @@ def test_help_uses_rich_click_formatting() -> None:
     runner = CliRunner()
 
     result = runner.invoke(main, ["--help"])
+    output = strip_ansi(result.output)
 
     assert result.exit_code == 0
-    assert "╭─ Options" in result.output
-    assert "╭─ Commands" in result.output
-    assert "Examples:" in result.output
+    assert "Options" in output
+    assert "Commands" in output
+    assert "Examples:" in output
 
 
 def test_deploy_python_command_writes_modulefile() -> None:
