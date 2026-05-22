@@ -1,12 +1,17 @@
 [project]
 name = "module-manager"
-version = "0.1.0"
+version = "0.1.0rc1"
 description = "Deploy Python and Rust CLI tools behind GNU environment modulefiles"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1",
     "rich-click>=1.8",
+]
+
+[project.optional-dependencies]
+docs = [
+    "mkdocs-material>=9.5",
 ]
 
 [build-system]
