@@ -662,6 +662,11 @@ dependencies = [
     { name = "rich-click" },
 ]
 
+[package.optional-dependencies]
+docs = [
+    { name = "mkdocs-material" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "mkdocs-material" },
@@ -674,8 +679,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
     { name = "rich-click", specifier = ">=1.8" },
 ]
+provides-extras = ["docs"]
 
 [package.metadata.requires-dev]
 dev = [
