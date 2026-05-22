@@ -1,6 +1,6 @@
 [project]
 name = "module-manager"
-version = "0.1.0rc3"
+version = "0.1.0"
 description = "Deploy Python and Rust CLI tools behind GNU environment modulefiles"
 readme = "README.md"
 requires-python = ">=3.11"
