@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     if: needs.release.result == 'success'
-    environment: testpypi
+    environment: pypi
     permissions:
       contents: read
       id-token: write
@@ -47,8 +47,8 @@ jobs:
           uv build
           uv run twine check dist/*
 
-      - name: Publish to TestPyPI
-        run: uv run twine upload --repository testpypi dist/*
+      - name: Publish to PyPI
+        run: uv run twine upload --repository pypi dist/*
 
   trigger-rtd:
     runs-on: ubuntu-latest
