@@ -5,8 +5,8 @@
 [![License](https://img.shields.io/github/license/ejb90/module-manager)](LICENSE)
 ![Ruff](https://img.shields.io/badge/code%20style-ruff-261230)
 [![Documentation](https://readthedocs.org/projects/module-manager/badge/?version=latest)](https://module-manager.readthedocs.io/en/latest/?badge=latest)
-[![PyPI](https://img.shields.io/pypi/v/module-manager)](https://pypi.org/project/module-manager/)
-[![Python versions](https://img.shields.io/pypi/pyversions/module-manager)](https://pypi.org/project/module-manager/)
+[![PyPI](https://img.shields.io/pypi/v/env-module-manager)](https://pypi.org/project/env-module-manager/)
+[![Python versions](https://img.shields.io/pypi/pyversions/env-module-manager)](https://pypi.org/project/env-module-manager/)
 
 `module-manager` deploys versioned Python and Rust CLI tools behind GNU
 environment modulefiles for Linux/HPC systems.
