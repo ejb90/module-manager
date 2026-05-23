@@ -8,7 +8,7 @@
 [![PyPI](https://img.shields.io/pypi/v/env-module-manager)](https://pypi.org/project/env-module-manager/)
 [![Python versions](https://img.shields.io/pypi/pyversions/env-module-manager)](https://pypi.org/project/env-module-manager/)
 
-`module-manager` deploys versioned Python and Rust CLI tools behind GNU
+`module-manager` deploys versioned Python, Rust, and shell CLI tools behind GNU
 environment modulefiles for Linux/HPC systems.
 
 It writes tools and modulefiles into predictable versioned locations:
@@ -39,12 +39,32 @@ module-manager deploy-rust ripgrep 14.1.1 \
   --module-root /prod/modulefiles
 ```
 
+Deploy a shell script:
+
+```sh
+module-manager deploy-script my-tool 1.0.0 \
+  --script ./scripts/my-tool \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles
+```
+
 Use the generated module:
 
 ```sh
 module use /prod/modulefiles
-module load ruff/0.8.0
+module load ruff
 ruff --version
+```
+
+Deployments make the deployed version the module default. Add `--no-default`
+when you want to write the versioned modulefile without changing the default.
+
+Remove a deployed version:
+
+```sh
+module-manager uninstall ruff 0.8.0 \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles
 ```
 
 ## Documentation
@@ -56,4 +76,4 @@ uv run mkdocs serve
 ```
 
 Start with `docs/index.md` for installation, configuration, Python tools, Rust
-tools, and local development notes.
+tools, shell scripts, uninstall, and local development notes.

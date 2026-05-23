@@ -21,6 +21,10 @@ Without `--execute-install`, the command creates the versioned directories and
 modulefile only. The module help includes the `uv tool install` command that an
 administrator can run later.
 
+Deployments also make the deployed version the module default, so `module load
+ruff` resolves to `ruff/0.8.0`. Add `--no-default` to leave the current default
+unchanged.
+
 ## Deploy from a Private Index
 
 ```sh

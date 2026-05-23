@@ -54,6 +54,7 @@ def test_deploy_python_command_writes_modulefile() -> None:
 
     assert result.exit_code == 0
     assert "modulefile: modules/ruff/0.8.0" in result.output
+    assert "default version: modules/ruff/.version" in result.output
 
 
 def test_deploy_python_command_uses_config_defaults() -> None:
@@ -146,3 +147,140 @@ def test_deploy_rust_command_copies_binary() -> None:
 
     assert result.exit_code == 0
     assert "modulefile: modules/ripgrep/14.1.1" in result.output
+
+
+def test_deploy_script_command_copies_script() -> None:
+    """The script deploy command should copy the script and report the modulefile."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        script = Path(fs) / "hello.sh"
+        script.write_text("#!/usr/bin/env bash\necho hello\n", encoding="utf-8")
+        result = runner.invoke(
+            main,
+            [
+                "deploy-script",
+                "hello",
+                "1.0.0",
+                "--script",
+                str(script),
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+
+        deployed = Path("tools/hello/1.0.0/bin/hello")
+        deployed_exists = deployed.exists()
+        deployed_is_executable = bool(deployed.stat().st_mode & 0o111)
+
+    assert result.exit_code == 0
+    assert "modulefile: modules/hello/1.0.0" in result.output
+    assert deployed_exists
+    assert deployed_is_executable
+
+
+def test_deploy_command_can_skip_default_version() -> None:
+    """The shared --no-default option should skip writing the default selector."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "deploy-rust",
+                "ripgrep",
+                "14.1.1",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--no-default",
+            ],
+        )
+        default_file_exists = Path("modules/ripgrep/.version").exists()
+
+    assert result.exit_code == 0
+    assert "default version:" not in result.output
+    assert not default_file_exists
+
+
+def test_uninstall_command_removes_deployed_version() -> None:
+    """The uninstall command should remove the install tree and modulefile."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        deploy_result = runner.invoke(
+            main,
+            [
+                "deploy-rust",
+                "ripgrep",
+                "14.1.1",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+        uninstall_result = runner.invoke(
+            main,
+            [
+                "uninstall",
+                "ripgrep",
+                "14.1.1",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+        install_root_exists = Path("tools/ripgrep/14.1.1").exists()
+        modulefile_exists = Path("modules/ripgrep/14.1.1").exists()
+        default_file_exists = Path("modules/ripgrep/.version").exists()
+
+    assert deploy_result.exit_code == 0
+    assert uninstall_result.exit_code == 0
+    assert "removed: tools/ripgrep/14.1.1" in uninstall_result.output
+    assert "removed: modules/ripgrep/14.1.1" in uninstall_result.output
+    assert "removed: modules/ripgrep/.version" in uninstall_result.output
+    assert not install_root_exists
+    assert not modulefile_exists
+    assert not default_file_exists
+
+
+def test_uninstall_command_dry_run_preserves_deployed_version() -> None:
+    """Dry-run uninstall should report targets while preserving files."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        runner.invoke(
+            main,
+            [
+                "deploy-rust",
+                "ripgrep",
+                "14.1.1",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+        result = runner.invoke(
+            main,
+            [
+                "uninstall",
+                "ripgrep",
+                "14.1.1",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--dry-run",
+            ],
+        )
+        install_root_exists = Path("tools/ripgrep/14.1.1").exists()
+
+    assert result.exit_code == 0
+    assert "would remove: tools/ripgrep/14.1.1" in result.output
+    assert install_root_exists

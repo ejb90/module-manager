@@ -6,6 +6,13 @@ Use a generated module tree:
 
 ```sh
 module use /prod/modulefiles
+module load ruff
+ruff --version
+```
+
+You can also load an explicit version:
+
+```sh
 module load ruff/0.8.0
 ruff --version
 ```
@@ -24,3 +31,27 @@ For `ruff/0.8.0`, the root variable is:
 ```sh
 RUFF_ROOT=/prod/tools/ruff/0.8.0
 ```
+
+## Default Versions
+
+Deploy commands write a default-version selector by default:
+
+```text
+/prod/modulefiles/<name>/.version
+```
+
+For `ruff/0.8.0`, this makes `module load ruff` resolve to `ruff/0.8.0`.
+
+Use `--no-default` when a deployment should not update the default version:
+
+```sh
+module-manager deploy-python ruff 0.8.0 \
+  --package 'ruff==0.8.0' \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --no-default
+```
+
+Uninstall removes the default selector only when it still points at the version
+being removed. If another deployment has already made a newer version the
+default, that selector is left alone.

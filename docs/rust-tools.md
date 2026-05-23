@@ -22,3 +22,7 @@ and creates:
 ```
 
 The generated modulefile prepends the deployed `bin` directory to `PATH`.
+
+Deployments make the deployed version the module default, so `module load
+ripgrep` resolves to `ripgrep/14.1.1`. Add `--no-default` to leave the current
+default unchanged.

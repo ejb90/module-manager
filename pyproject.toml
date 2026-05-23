@@ -1,7 +1,7 @@
 [project]
 name = "env-module-manager"
-version = "0.1.2"
-description = "Deploy Python and Rust CLI tools behind GNU environment modulefiles"
+version = "0.2.0"
+description = "Deploy Python, Rust, and shell CLI tools behind GNU environment modulefiles"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [

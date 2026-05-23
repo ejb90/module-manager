@@ -70,3 +70,18 @@ def render_modulefile(spec: ModuleSpec) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def render_default_version(version: str) -> str:
+    """Render the Environment Modules default-version selector file."""
+    lines = [
+        "#%Module1.0",
+        f"set ModulesVersion {tcl_quote(version)}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def is_default_version(content: str, version: str) -> bool:
+    """Return whether default-version file content selects a version."""
+    return content.strip() == render_default_version(version).strip()
