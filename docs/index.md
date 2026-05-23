@@ -1,6 +1,6 @@
 # module-manager
 
-`module-manager` deploys versioned Python and Rust CLI tools behind GNU
+`module-manager` deploys versioned Python, Rust, and shell CLI tools behind GNU
 environment modulefiles for Linux/HPC systems.
 
 It is designed for administrators who want reproducible command-line tool
@@ -47,3 +47,5 @@ ruff --version
 - Set shared defaults in [Configuration](configuration.md).
 - Deploy Python packages with [Python Tools](python-tools.md).
 - Deploy Rust binaries with [Rust Tools](rust-tools.md).
+- Deploy shell scripts with [Shell Scripts](shell-tools.md).
+- Remove deployed versions with [Uninstall](uninstall.md).

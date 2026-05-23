@@ -10,7 +10,7 @@ from click import Command
 
 from . import __version__
 from .config import AppConfig, load_config
-from .deploy import deploy_python_tool, deploy_rust_tool
+from .deploy import UninstallResult, deploy_python_tool, deploy_rust_tool, deploy_script_tool, uninstall_tool
 
 click.rich_click.TEXT_MARKUP = "rich"
 click.rich_click.STYLE_COMMAND = "bold cyan"
@@ -29,7 +29,14 @@ ClickCommand = TypeVar("ClickCommand", bound=Command)
 
 
 def common_options(command: ClickCommand) -> ClickCommand:
-    """Attach options shared by Python and Rust deployment commands."""
+    """Attach options shared by deployment commands."""
+    command = click.option(
+        "--default/--no-default",
+        "make_default",
+        default=True,
+        show_default=True,
+        help="Write the module default selector for this version.",
+    )(command)
     command = click.option(
         "--homepage",
         help="Optional upstream homepage shown in module help.",
@@ -38,6 +45,23 @@ def common_options(command: ClickCommand) -> ClickCommand:
         "--description",
         help="Text shown by module help and module-whatis.",
     )(command)
+    command = click.option(
+        "--prefix",
+        type=PATH,
+        help="Root installation prefix, for example /prod/tools.",
+    )(command)
+    command = click.option(
+        "--module-root",
+        type=PATH,
+        help="Root of the module tree, for example /prod/modulefiles.",
+    )(command)
+    command = click.argument("version")(command)
+    command = click.argument("name")(command)
+    return command
+
+
+def location_options(command: ClickCommand) -> ClickCommand:
+    """Attach options for commands that need deployment roots."""
     command = click.option(
         "--prefix",
         type=PATH,
@@ -66,8 +90,8 @@ def main(ctx: click.Context, config: Path | None) -> None:
     """[bold]Deploy CLI tools behind GNU environment modulefiles.[/bold].
 
     Build versioned modulefiles for Python tools installed with
-    [cyan]uv tool install[/cyan] and Rust binaries copied into a production
-    prefix.
+    [cyan]uv tool install[/cyan], Rust binaries, and shell scripts copied into
+    a production prefix.
     """
     ctx.obj = load_config(config)
 
@@ -102,6 +126,7 @@ def deploy_python(
     prefix: Path | None,
     description: str | None,
     homepage: str | None,
+    make_default: bool,
     package: str,
     python: str | None,
     indexes: tuple[str, ...],
@@ -123,8 +148,11 @@ def deploy_python(
         indexes=indexes or config.indexes,
         find_links=find_links or config.find_links,
         execute_install=execute_install,
+        make_default=make_default,
     )
-    print_result(paths.modulefile, paths.install_root, paths.bin_dir)
+    print_result(
+        paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
+    )
 
 
 @main.command("deploy-rust")
@@ -143,6 +171,7 @@ def deploy_rust(
     prefix: Path | None,
     description: str | None,
     homepage: str | None,
+    make_default: bool,
     binary: Path | None,
 ) -> None:
     """Copy a Rust CLI binary and write a modulefile for it."""
@@ -156,8 +185,84 @@ def deploy_rust(
         binary=binary.expanduser() if binary else None,
         description=description,
         homepage=homepage,
+        make_default=make_default,
     )
-    print_result(paths.modulefile, paths.install_root, paths.bin_dir)
+    print_result(
+        paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
+    )
+
+
+@main.command("deploy-script")
+@common_options
+@click.option(
+    "--script",
+    type=PATH,
+    help="Shell script to copy into the versioned prefix.",
+)
+@click.pass_obj
+def deploy_script(
+    config: AppConfig,
+    name: str,
+    version: str,
+    module_root: Path | None,
+    prefix: Path | None,
+    description: str | None,
+    homepage: str | None,
+    make_default: bool,
+    script: Path | None,
+) -> None:
+    """Copy a shell script and write a modulefile for it."""
+    resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
+    resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
+    paths = deploy_script_tool(
+        name=name,
+        version=version,
+        module_root=resolved_module_root,
+        prefix=resolved_prefix,
+        script=script.expanduser() if script else None,
+        description=description,
+        homepage=homepage,
+        make_default=make_default,
+    )
+    print_result(
+        paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
+    )
+
+
+@main.command("uninstall")
+@location_options
+@click.option(
+    "--keep-default",
+    is_flag=True,
+    help="Leave the default selector in place, even if it points at this version.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print paths that would be removed without deleting them.",
+)
+@click.pass_obj
+def uninstall(
+    config: AppConfig,
+    name: str,
+    version: str,
+    module_root: Path | None,
+    prefix: Path | None,
+    keep_default: bool,
+    dry_run: bool,
+) -> None:
+    """Remove a deployed tool version and its modulefile."""
+    resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
+    resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
+    result = uninstall_tool(
+        name=name,
+        version=version,
+        module_root=resolved_module_root,
+        prefix=resolved_prefix,
+        remove_default=not keep_default,
+        dry_run=dry_run,
+    )
+    print_uninstall_result(result, dry_run)
 
 
 def require_path(value: Path | None, label: str, option: str) -> Path:
@@ -171,8 +276,25 @@ def require_path(value: Path | None, label: str, option: str) -> Path:
     return value.expanduser()
 
 
-def print_result(modulefile: Path, install_root: Path, bin_dir: Path) -> None:
+def print_result(
+    modulefile: Path,
+    install_root: Path,
+    bin_dir: Path,
+    default_version_file: Path | None = None,
+) -> None:
     """Print the paths produced by a deployment command."""
     click.echo(f"modulefile: {modulefile}")
     click.echo(f"install root: {install_root}")
     click.echo(f"bin dir: {bin_dir}")
+    if default_version_file:
+        click.echo(f"default version: {default_version_file}")
+
+
+def print_uninstall_result(result: UninstallResult, dry_run: bool = False) -> None:
+    """Print the paths removed by an uninstall command."""
+    action = "would remove" if dry_run else "removed"
+    if not result.removed:
+        click.echo("nothing to remove")
+        return
+    for path in result.removed:
+        click.echo(f"{action}: {path}")

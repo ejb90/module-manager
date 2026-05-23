@@ -1,4 +1,4 @@
-"""Deployment routines for Python and Rust command-line tools."""
+"""Deployment routines for Python, Rust, and shell command-line tools."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .modulefile import ModuleSpec, render_modulefile
+from .modulefile import ModuleSpec, is_default_version, render_default_version, render_modulefile
 
 
 class MissingExecutableError(RuntimeError):
@@ -24,6 +24,16 @@ class DeploymentPaths:
     install_root: Path
     bin_dir: Path
     modulefile: Path
+    default_version_file: Path | None = None
+
+
+@dataclass(frozen=True)
+class UninstallResult:
+    """Filesystem paths removed or left behind by an uninstall."""
+
+    paths: DeploymentPaths
+    removed: tuple[Path, ...]
+    default_version_removed: bool
 
 
 def deployment_paths(module_root: Path, prefix: Path, name: str, version: str) -> DeploymentPaths:
@@ -33,6 +43,7 @@ def deployment_paths(module_root: Path, prefix: Path, name: str, version: str) -
         install_root=install_root,
         bin_dir=install_root / "bin",
         modulefile=module_root / name / version,
+        default_version_file=module_root / name / ".version",
     )
 
 
@@ -69,6 +80,70 @@ def require_executable(name: str) -> str:
     return executable
 
 
+def write_default_version(paths: DeploymentPaths, version: str, make_default: bool) -> None:
+    """Write the default-version file when requested."""
+    if make_default and paths.default_version_file:
+        write_text(paths.default_version_file, render_default_version(version))
+
+
+def prune_empty_dir(path: Path, stop: Path) -> None:
+    """Remove empty parent directories up to, but not including, a stop path."""
+    current = path
+    while current != stop and stop in current.parents:
+        try:
+            current.rmdir()
+        except OSError:
+            return
+        current = current.parent
+
+
+def remove_path(path: Path) -> bool:
+    """Remove one filesystem path when it exists."""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return True
+    if path.is_dir():
+        shutil.rmtree(path)
+        return True
+    return False
+
+
+def uninstall_tool(
+    *,
+    name: str,
+    version: str,
+    module_root: Path,
+    prefix: Path,
+    remove_default: bool = True,
+    dry_run: bool = False,
+) -> UninstallResult:
+    """Remove a deployed tool version and its matching modulefile."""
+    paths = deployment_paths(module_root, prefix, name, version)
+    targets = (paths.install_root, paths.modulefile)
+    removed: list[Path] = []
+
+    for target in targets:
+        if target.exists() or target.is_symlink():
+            removed.append(target)
+            if not dry_run:
+                remove_path(target)
+
+    default_removed = False
+    if remove_default and paths.default_version_file and paths.default_version_file.exists():
+        default_content = paths.default_version_file.read_text(encoding="utf-8")
+        if is_default_version(default_content, version):
+            default_removed = True
+            removed.append(paths.default_version_file)
+            if not dry_run:
+                paths.default_version_file.unlink()
+
+    if not dry_run:
+        prune_empty_dir(paths.modulefile.parent, module_root)
+        prune_empty_dir(paths.install_root.parent, prefix)
+
+    return UninstallResult(paths=paths, removed=tuple(removed), default_version_removed=default_removed)
+
+
 def deploy_python_tool(
     *,
     name: str,
@@ -82,6 +157,7 @@ def deploy_python_tool(
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
     execute_install: bool = False,
+    make_default: bool = True,
 ) -> DeploymentPaths:
     """Deploy metadata for a Python tool and optionally install it with uv."""
     paths = deployment_paths(module_root, prefix, name, version)
@@ -113,6 +189,7 @@ def deploy_python_tool(
         )
     )
     write_text(paths.modulefile, modulefile)
+    write_default_version(paths, version, make_default)
     return paths
 
 
@@ -125,6 +202,7 @@ def deploy_rust_tool(
     binary: Path | None = None,
     description: str | None = None,
     homepage: str | None = None,
+    make_default: bool = True,
 ) -> DeploymentPaths:
     """Deploy metadata for a Rust tool and optionally copy its binary."""
     paths = deployment_paths(module_root, prefix, name, version)
@@ -147,4 +225,41 @@ def deploy_rust_tool(
         )
     )
     write_text(paths.modulefile, modulefile)
+    write_default_version(paths, version, make_default)
+    return paths
+
+
+def deploy_script_tool(
+    *,
+    name: str,
+    version: str,
+    module_root: Path,
+    prefix: Path,
+    script: Path | None = None,
+    description: str | None = None,
+    homepage: str | None = None,
+    make_default: bool = True,
+) -> DeploymentPaths:
+    """Deploy metadata for a shell script and optionally copy it into ``bin``."""
+    paths = deployment_paths(module_root, prefix, name, version)
+    paths.bin_dir.mkdir(parents=True, exist_ok=True)
+
+    if script:
+        target = paths.bin_dir / name
+        shutil.copy2(script, target)
+        target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    modulefile = render_modulefile(
+        ModuleSpec(
+            name=name,
+            version=version,
+            root=paths.install_root,
+            bin_dir=paths.bin_dir,
+            description=description,
+            homepage=homepage,
+            install_hint=f"copy script to {paths.bin_dir / name}",
+        )
+    )
+    write_text(paths.modulefile, modulefile)
+    write_default_version(paths, version, make_default)
     return paths

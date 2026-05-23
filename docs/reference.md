@@ -18,6 +18,18 @@ Show Rust deployment options:
 module-manager deploy-rust --help
 ```
 
+Show shell script deployment options:
+
+```sh
+module-manager deploy-script --help
+```
+
+Show uninstall options:
+
+```sh
+module-manager uninstall --help
+```
+
 ## Python Command
 
 ```sh
@@ -28,6 +40,7 @@ module-manager deploy-python NAME VERSION \
   [--find-links PATH_OR_URL] \
   [--prefix PATH] \
   [--module-root PATH] \
+  [--no-default] \
   [--execute-install]
 ```
 
@@ -37,5 +50,26 @@ module-manager deploy-python NAME VERSION \
 module-manager deploy-rust NAME VERSION \
   [--binary PATH] \
   [--prefix PATH] \
-  [--module-root PATH]
+  [--module-root PATH] \
+  [--no-default]
+```
+
+## Shell Script Command
+
+```sh
+module-manager deploy-script NAME VERSION \
+  [--script PATH] \
+  [--prefix PATH] \
+  [--module-root PATH] \
+  [--no-default]
+```
+
+## Uninstall Command
+
+```sh
+module-manager uninstall NAME VERSION \
+  [--prefix PATH] \
+  [--module-root PATH] \
+  [--keep-default] \
+  [--dry-run]
 ```
