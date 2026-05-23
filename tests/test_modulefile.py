@@ -55,7 +55,11 @@ def test_render_default_version_selects_version() -> None:
 
 
 def test_deploy_python_tool_writes_modulefile(tmp_path: Path) -> None:
-    """Python deployments should create the bin directory and modulefile."""
+    """Python deployments should create the bin directory and modulefile.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     paths = deploy_python_tool(
         name="ruff",
         version="0.8.0",
@@ -92,7 +96,11 @@ def test_python_tool_install_command_accepts_indexes() -> None:
 
 
 def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Path) -> None:
-    """Generated module help should show the package source options."""
+    """Generated module help should show the package source options.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     paths = deploy_python_tool(
         name="internal-tool",
         version="1.2.3",
@@ -109,7 +117,11 @@ def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Pat
 
 
 def test_require_executable_reports_missing_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Missing external commands should raise a clear deployment error."""
+    """Missing external commands should raise a clear deployment error.
+
+    Args:
+        monkeypatch: Pytest helper used to replace executable lookup.
+    """
     monkeypatch.setattr("module_manager.deploy.shutil.which", lambda _name: None)
 
     with pytest.raises(MissingExecutableError, match="Required executable not found"):
@@ -117,7 +129,11 @@ def test_require_executable_reports_missing_command(monkeypatch: pytest.MonkeyPa
 
 
 def test_deploy_rust_tool_copies_binary_and_marks_executable(tmp_path: Path) -> None:
-    """Rust deployments should copy the binary and ensure it is executable."""
+    """Rust deployments should copy the binary and ensure it is executable.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     binary = tmp_path / "rg"
     binary.write_text("binary", encoding="utf-8")
 
@@ -136,7 +152,11 @@ def test_deploy_rust_tool_copies_binary_and_marks_executable(tmp_path: Path) -> 
 
 
 def test_deploy_script_tool_copies_script_and_marks_executable(tmp_path: Path) -> None:
-    """Script deployments should copy the script and ensure it is executable."""
+    """Script deployments should copy the script and ensure it is executable.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     script = tmp_path / "tool.sh"
     script.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
 
@@ -155,7 +175,11 @@ def test_deploy_script_tool_copies_script_and_marks_executable(tmp_path: Path) -
 
 
 def test_deploy_tool_can_skip_default_version(tmp_path: Path) -> None:
-    """Deployments should leave the default-version file untouched when requested."""
+    """Deployments should leave the default-version file untouched when requested.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     paths = deploy_rust_tool(
         name="ripgrep",
         version="14.1.1",
@@ -169,7 +193,11 @@ def test_deploy_tool_can_skip_default_version(tmp_path: Path) -> None:
 
 
 def test_uninstall_tool_removes_install_modulefile_and_matching_default(tmp_path: Path) -> None:
-    """Uninstall should remove a deployed version and its matching default."""
+    """Uninstall should remove a deployed version and its matching default.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     paths = deploy_python_tool(
         name="ruff",
         version="0.8.0",
@@ -196,7 +224,11 @@ def test_uninstall_tool_removes_install_modulefile_and_matching_default(tmp_path
 
 
 def test_uninstall_tool_keeps_default_for_other_version(tmp_path: Path) -> None:
-    """Uninstall should not remove a default selector for another version."""
+    """Uninstall should not remove a default selector for another version.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     old_paths = deploy_python_tool(
         name="ruff",
         version="0.8.0",
@@ -227,7 +259,11 @@ def test_uninstall_tool_keeps_default_for_other_version(tmp_path: Path) -> None:
 
 
 def test_uninstall_tool_dry_run_leaves_paths_in_place(tmp_path: Path) -> None:
-    """Dry-run uninstall should report targets without deleting them."""
+    """Dry-run uninstall should report targets without deleting them.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
     paths = deploy_rust_tool(
         name="ripgrep",
         version="14.1.1",

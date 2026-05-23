@@ -8,7 +8,11 @@ from module_manager.config import AppConfig, load_config
 
 
 def test_load_config_reads_toml_defaults(tmp_path: Path) -> None:
-    """Config files should provide deployment defaults."""
+    """Config files should provide deployment defaults.
+
+    Args:
+        tmp_path: Temporary directory for writing a config file.
+    """
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
@@ -31,7 +35,12 @@ find_links = ["/scratch/wheels"]
 
 
 def test_load_config_overlays_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Environment variables should override TOML defaults."""
+    """Environment variables should override TOML defaults.
+
+    Args:
+        tmp_path: Temporary directory for writing a config file.
+        monkeypatch: Pytest helper used to set environment variables.
+    """
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
