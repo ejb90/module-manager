@@ -29,7 +29,14 @@ ClickCommand = TypeVar("ClickCommand", bound=Command)
 
 
 def common_options(command: ClickCommand) -> ClickCommand:
-    """Attach options shared by deployment commands."""
+    """Attach options shared by deployment commands.
+
+    Args:
+        command: Click command function being decorated.
+
+    Returns:
+        Decorated Click command function.
+    """
     command = click.option(
         "--default/--no-default",
         "make_default",
@@ -61,7 +68,14 @@ def common_options(command: ClickCommand) -> ClickCommand:
 
 
 def location_options(command: ClickCommand) -> ClickCommand:
-    """Attach options for commands that need deployment roots."""
+    """Attach options for commands that need deployment roots.
+
+    Args:
+        command: Click command function being decorated.
+
+    Returns:
+        Decorated Click command function.
+    """
     command = click.option(
         "--prefix",
         type=PATH,
@@ -92,6 +106,10 @@ def main(ctx: click.Context, config: Path | None) -> None:
     Build versioned modulefiles for Python tools installed with
     [cyan]uv tool install[/cyan], Rust binaries, and shell scripts copied into
     a production prefix.
+
+    Args:
+        ctx: Click context used to store resolved configuration.
+        config: Optional TOML configuration path.
     """
     ctx.obj = load_config(config)
 
@@ -133,7 +151,29 @@ def deploy_python(
     find_links: tuple[str, ...],
     execute_install: bool,
 ) -> None:
-    """Write a modulefile for a [cyan]uv tool install[/cyan] Python CLI."""
+    """Write a modulefile for a [cyan]uv tool install[/cyan] Python CLI.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        name: Tool name used in install and module paths.
+        version: Tool version used in install and module paths.
+        module_root: Optional module tree root overriding configuration.
+        prefix: Optional install prefix overriding configuration.
+        description: Optional module help and `module-whatis` text.
+        homepage: Optional upstream homepage shown in module help.
+        make_default: Whether to make this version the module default.
+        package: Package spec passed to `uv tool install`.
+        python: Optional Python interpreter or version passed to uv.
+        indexes: Additional package index URLs passed to uv.
+        find_links: Wheelhouse directories or HTML package pages passed to uv.
+        execute_install: Whether to run `uv tool install` immediately.
+
+    Raises:
+        click.UsageError: If required paths are missing.
+        MissingExecutableError: If `execute_install` is true and uv is not on
+            `PATH`.
+        subprocess.CalledProcessError: If `uv tool install` fails.
+    """
     resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
     resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
     paths = deploy_python_tool(
@@ -174,7 +214,23 @@ def deploy_rust(
     make_default: bool,
     binary: Path | None,
 ) -> None:
-    """Copy a Rust CLI binary and write a modulefile for it."""
+    """Copy a Rust CLI binary and write a modulefile for it.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        name: Tool name used in install and module paths.
+        version: Tool version used in install and module paths.
+        module_root: Optional module tree root overriding configuration.
+        prefix: Optional install prefix overriding configuration.
+        description: Optional module help and `module-whatis` text.
+        homepage: Optional upstream homepage shown in module help.
+        make_default: Whether to make this version the module default.
+        binary: Optional compiled binary to copy into the deployed `bin`
+            directory.
+
+    Raises:
+        click.UsageError: If required paths are missing.
+    """
     resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
     resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
     paths = deploy_rust_tool(
@@ -211,7 +267,22 @@ def deploy_script(
     make_default: bool,
     script: Path | None,
 ) -> None:
-    """Copy a shell script and write a modulefile for it."""
+    """Copy a shell script and write a modulefile for it.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        name: Tool name used in install and module paths.
+        version: Tool version used in install and module paths.
+        module_root: Optional module tree root overriding configuration.
+        prefix: Optional install prefix overriding configuration.
+        description: Optional module help and `module-whatis` text.
+        homepage: Optional upstream homepage shown in module help.
+        make_default: Whether to make this version the module default.
+        script: Optional shell script to copy into the deployed `bin` directory.
+
+    Raises:
+        click.UsageError: If required paths are missing.
+    """
     resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
     resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
     paths = deploy_script_tool(
@@ -251,7 +322,20 @@ def uninstall(
     keep_default: bool,
     dry_run: bool,
 ) -> None:
-    """Remove a deployed tool version and its modulefile."""
+    """Remove a deployed tool version and its modulefile.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        name: Tool name used in install and module paths.
+        version: Tool version to remove.
+        module_root: Optional module tree root overriding configuration.
+        prefix: Optional install prefix overriding configuration.
+        keep_default: Whether to leave the default selector untouched.
+        dry_run: Whether to report paths without deleting them.
+
+    Raises:
+        click.UsageError: If required paths are missing.
+    """
     resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
     resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
     result = uninstall_tool(
@@ -266,7 +350,19 @@ def uninstall(
 
 
 def require_path(value: Path | None, label: str, option: str) -> Path:
-    """Return a configured path or raise a Click usage error."""
+    """Return a configured path or raise a Click usage error.
+
+    Args:
+        value: Candidate path from CLI options or configuration.
+        label: Human-readable path label used in the error message.
+        option: CLI option that can provide the missing path.
+
+    Returns:
+        Expanded path.
+
+    Raises:
+        click.UsageError: If `value` is `None`.
+    """
     if value is None:
         msg = (
             f"Missing {label}. Provide {option}, set the matching MODULE_MANAGER_* "
@@ -282,7 +378,14 @@ def print_result(
     bin_dir: Path,
     default_version_file: Path | None = None,
 ) -> None:
-    """Print the paths produced by a deployment command."""
+    """Print the paths produced by a deployment command.
+
+    Args:
+        modulefile: Versioned modulefile path.
+        install_root: Versioned installation root.
+        bin_dir: Executable directory exposed by the modulefile.
+        default_version_file: Optional default selector path.
+    """
     click.echo(f"modulefile: {modulefile}")
     click.echo(f"install root: {install_root}")
     click.echo(f"bin dir: {bin_dir}")
@@ -291,7 +394,12 @@ def print_result(
 
 
 def print_uninstall_result(result: UninstallResult, dry_run: bool = False) -> None:
-    """Print the paths removed by an uninstall command."""
+    """Print the paths removed by an uninstall command.
+
+    Args:
+        result: Uninstall result to report.
+        dry_run: Whether the command only previewed removals.
+    """
     action = "would remove" if dry_run else "removed"
     if not result.removed:
         click.echo("nothing to remove")

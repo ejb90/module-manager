@@ -11,7 +11,14 @@ ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def strip_ansi(value: str) -> str:
-    """Remove ANSI escape sequences from terminal output."""
+    """Remove ANSI escape sequences from terminal output.
+
+    Args:
+        value: Text that may contain ANSI escape sequences.
+
+    Returns:
+        Text with ANSI escape sequences removed.
+    """
     return ANSI_ESCAPE_RE.sub("", value)
 
 

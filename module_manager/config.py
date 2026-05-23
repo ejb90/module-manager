@@ -14,7 +14,15 @@ DEFAULT_CONFIG_PATH = Path("~/.config/module-manager/config.toml")
 
 @dataclass(frozen=True)
 class AppConfig:
-    """Resolved defaults loaded from files and environment variables."""
+    """Resolved defaults loaded from files and environment variables.
+
+    Attributes:
+        prefix: Default installation prefix for deployed tools.
+        module_root: Default root directory for generated modulefiles.
+        indexes: Default Python package indexes passed to `uv tool install`.
+        find_links: Default Python package locations passed to
+            `uv tool install`.
+    """
 
     prefix: Path | None = None
     module_root: Path | None = None
@@ -23,19 +31,46 @@ class AppConfig:
 
 
 def default_config_path() -> Path:
-    """Return the default per-user config path."""
+    """Return the default per-user config path.
+
+    Returns:
+        Expanded path to the default TOML configuration file.
+    """
     return DEFAULT_CONFIG_PATH.expanduser()
 
 
 def load_config(path: Path | None = None) -> AppConfig:
-    """Load configuration from TOML and overlay environment variables."""
+    """Load configuration from TOML and overlay environment variables.
+
+    Args:
+        path: Optional TOML configuration path. When omitted, the per-user
+            default path is used.
+
+    Returns:
+        Resolved application configuration.
+
+    Raises:
+        TypeError: If a configured TOML value has the wrong type.
+    """
     config_path = (path or default_config_path()).expanduser()
     file_config = load_file_config(config_path)
     return overlay_env_config(file_config)
 
 
 def load_file_config(path: Path) -> AppConfig:
-    """Load configuration defaults from a TOML file if it exists."""
+    """Load configuration defaults from a TOML file if it exists.
+
+    Args:
+        path: TOML configuration file path.
+
+    Returns:
+        Configuration loaded from the file, or empty defaults when the file does
+        not exist.
+
+    Raises:
+        TypeError: If a configured TOML value has the wrong type.
+        tomllib.TOMLDecodeError: If the file is not valid TOML.
+    """
     if not path.exists():
         return AppConfig()
 
@@ -50,7 +85,14 @@ def load_file_config(path: Path) -> AppConfig:
 
 
 def overlay_env_config(config: AppConfig) -> AppConfig:
-    """Apply MODULE_MANAGER_* environment variables to file config."""
+    """Apply `MODULE_MANAGER_*` environment variables to file config.
+
+    Args:
+        config: Base configuration loaded from TOML.
+
+    Returns:
+        Configuration with environment values taking precedence.
+    """
     return AppConfig(
         prefix=env_path("MODULE_MANAGER_PREFIX") or config.prefix,
         module_root=env_path("MODULE_MANAGER_MODULE_ROOT") or config.module_root,
@@ -60,7 +102,19 @@ def overlay_env_config(config: AppConfig) -> AppConfig:
 
 
 def table(value: object, key: str) -> dict[str, Any]:
-    """Return a TOML table or raise a useful type error."""
+    """Return a TOML table or raise a useful type error.
+
+    Args:
+        value: Raw TOML value.
+        key: Configuration key used in error messages.
+
+    Returns:
+        A TOML table as a dictionary, or an empty dictionary when `value` is
+        `None`.
+
+    Raises:
+        TypeError: If `value` is not a TOML table.
+    """
     if value is None:
         return {}
     if isinstance(value, dict):
@@ -70,7 +124,18 @@ def table(value: object, key: str) -> dict[str, Any]:
 
 
 def optional_path(value: object, key: str) -> Path | None:
-    """Parse an optional TOML string as a path."""
+    """Parse an optional TOML string as a path.
+
+    Args:
+        value: Raw TOML value.
+        key: Configuration key used in error messages.
+
+    Returns:
+        Expanded path when configured, otherwise `None`.
+
+    Raises:
+        TypeError: If `value` is neither `None` nor a string.
+    """
     if value is None:
         return None
     if isinstance(value, str):
@@ -80,7 +145,18 @@ def optional_path(value: object, key: str) -> Path | None:
 
 
 def string_tuple(value: object, key: str) -> tuple[str, ...]:
-    """Parse an optional TOML string list."""
+    """Parse an optional TOML string list.
+
+    Args:
+        value: Raw TOML value.
+        key: Configuration key used in error messages.
+
+    Returns:
+        Tuple of configured strings, or an empty tuple when `value` is `None`.
+
+    Raises:
+        TypeError: If `value` is not a list of strings.
+    """
     if value is None:
         return ()
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
@@ -90,7 +166,14 @@ def string_tuple(value: object, key: str) -> tuple[str, ...]:
 
 
 def env_path(name: str) -> Path | None:
-    """Read a path from an environment variable."""
+    """Read a path from an environment variable.
+
+    Args:
+        name: Environment variable name.
+
+    Returns:
+        Expanded path when the variable is set and non-empty, otherwise `None`.
+    """
     value = os.environ.get(name)
     if not value:
         return None
@@ -98,7 +181,15 @@ def env_path(name: str) -> Path | None:
 
 
 def env_tuple(name: str) -> tuple[str, ...]:
-    """Read comma-separated string values from an environment variable."""
+    """Read comma-separated string values from an environment variable.
+
+    Args:
+        name: Environment variable name.
+
+    Returns:
+        Tuple of non-empty comma-separated values with surrounding whitespace
+        removed.
+    """
     value = os.environ.get(name)
     if not value:
         return ()
