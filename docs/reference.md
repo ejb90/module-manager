@@ -24,6 +24,12 @@ Show shell script deployment options:
 module-manager deploy-script --help
 ```
 
+Show collective environment deployment options:
+
+```sh
+module-manager deploy-env --help
+```
+
 Show uninstall options:
 
 ```sh
@@ -51,7 +57,8 @@ module-manager deploy-rust NAME VERSION \
   [--binary PATH] \
   [--prefix PATH] \
   [--module-root PATH] \
-  [--no-default]
+  [--no-default] \
+  [--dry-run]
 ```
 
 ## Shell Script Command
@@ -61,7 +68,19 @@ module-manager deploy-script NAME VERSION \
   [--script PATH] \
   [--prefix PATH] \
   [--module-root PATH] \
-  [--no-default]
+  [--no-default] \
+  [--dry-run]
+```
+
+## Collective Environment Command
+
+```sh
+module-manager deploy-env \
+  --file MANIFEST.toml \
+  [--prefix PATH] \
+  [--module-root PATH] \
+  [--no-default] \
+  [--dry-run]
 ```
 
 ## Uninstall Command

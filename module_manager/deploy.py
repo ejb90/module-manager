@@ -9,6 +9,9 @@ import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+import tomllib
 
 from .modulefile import ModuleSpec, is_default_version, render_default_version, render_modulefile
 
@@ -48,6 +51,75 @@ class UninstallResult:
     paths: DeploymentPaths
     removed: tuple[Path, ...]
     default_version_removed: bool
+
+
+@dataclass(frozen=True)
+class EnvironmentToolSpec:
+    """One tool entry in a collective environment manifest.
+
+    Attributes:
+        tool_type: Tool backend, such as `python`, `rust`, or `script`.
+        name: Tool name used for copied binaries and reporting.
+        version: Optional source tool version for documentation.
+        package: Python package spec passed to `uv tool install`.
+        binary: Rust binary path to copy into the shared `bin` directory.
+        script: Shell script path to copy into the shared `bin` directory.
+        python: Optional Python interpreter or version passed to uv.
+        indexes: Additional package index URLs passed to uv.
+        find_links: Wheelhouse directories or HTML package pages passed to uv.
+        description: Optional tool description.
+        homepage: Optional upstream homepage.
+    """
+
+    tool_type: str
+    name: str
+    version: str | None = None
+    package: str | None = None
+    binary: Path | None = None
+    script: Path | None = None
+    python: str | None = None
+    indexes: tuple[str, ...] = ()
+    find_links: tuple[str, ...] = ()
+    description: str | None = None
+    homepage: str | None = None
+
+
+@dataclass(frozen=True)
+class EnvironmentSpec:
+    """Collective environment deployment specification.
+
+    Attributes:
+        name: Environment module name.
+        version: Environment module version.
+        tools: Tool entries to install or copy into the shared environment.
+        prefix: Optional install prefix from the manifest.
+        module_root: Optional module tree root from the manifest.
+        description: Optional environment module description.
+        homepage: Optional homepage shown in module help.
+        make_default: Whether to make this environment version the default.
+    """
+
+    name: str
+    version: str
+    tools: tuple[EnvironmentToolSpec, ...]
+    prefix: Path | None = None
+    module_root: Path | None = None
+    description: str | None = None
+    homepage: str | None = None
+    make_default: bool = True
+
+
+@dataclass(frozen=True)
+class EnvironmentDeploymentResult:
+    """Result of deploying or previewing a collective environment.
+
+    Attributes:
+        paths: Filesystem paths for the collective environment.
+        actions: Human-readable actions performed, or planned during dry runs.
+    """
+
+    paths: DeploymentPaths
+    actions: tuple[str, ...]
 
 
 def deployment_paths(module_root: Path, prefix: Path, name: str, version: str) -> DeploymentPaths:
@@ -141,6 +213,21 @@ def write_default_version(paths: DeploymentPaths, version: str, make_default: bo
         write_text(paths.default_version_file, render_default_version(version))
 
 
+def copy_executable(source: Path, target: Path, dry_run: bool = False) -> None:
+    """Copy a file and mark it executable unless this is a dry run.
+
+    Args:
+        source: Existing source file to copy.
+        target: Destination executable path.
+        dry_run: Whether to skip filesystem mutation.
+    """
+    if dry_run:
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
 def prune_empty_dir(path: Path, stop: Path) -> None:
     """Remove empty parent directories up to, but not including, a stop path.
 
@@ -222,6 +309,317 @@ def uninstall_tool(
         prune_empty_dir(paths.install_root.parent, prefix)
 
     return UninstallResult(paths=paths, removed=tuple(removed), default_version_removed=default_removed)
+
+
+def require_string(data: dict[str, Any], key: str) -> str:
+    """Read a required string from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Required key.
+
+    Returns:
+        Configured string value.
+
+    Raises:
+        TypeError: If the value is missing or not a string.
+    """
+    value = data.get(key)
+    if isinstance(value, str) and value:
+        return value
+    msg = f"{key} must be a non-empty string"
+    raise TypeError(msg)
+
+
+def optional_string(data: dict[str, Any], key: str) -> str | None:
+    """Read an optional string from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Optional key.
+
+    Returns:
+        Configured string value, or `None`.
+
+    Raises:
+        TypeError: If the value is not a string.
+    """
+    value = data.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    msg = f"{key} must be a string"
+    raise TypeError(msg)
+
+
+def optional_manifest_path(data: dict[str, Any], key: str, base_dir: Path | None = None) -> Path | None:
+    """Read an optional path from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Optional path key.
+        base_dir: Directory used to resolve relative paths.
+
+    Returns:
+        Expanded path value, or `None`.
+
+    Raises:
+        TypeError: If the value is not a string.
+    """
+    value = optional_string(data, key)
+    if value is None:
+        return None
+    path = Path(value).expanduser()
+    if base_dir and not path.is_absolute():
+        return base_dir / path
+    return path
+
+
+def optional_string_tuple(data: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Read an optional list of strings from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Optional list key.
+
+    Returns:
+        Configured strings, or an empty tuple.
+
+    Raises:
+        TypeError: If the value is not a list of strings.
+    """
+    value = data.get(key)
+    if value is None:
+        return ()
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return tuple(value)
+    msg = f"{key} must be a list of strings"
+    raise TypeError(msg)
+
+
+def optional_bool(data: dict[str, Any], key: str, default: bool) -> bool:
+    """Read an optional boolean from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Optional boolean key.
+        default: Value to use when the key is absent.
+
+    Returns:
+        Configured boolean value or the default.
+
+    Raises:
+        TypeError: If the value is not a boolean.
+    """
+    value = data.get(key, default)
+    if isinstance(value, bool):
+        return value
+    msg = f"{key} must be a boolean"
+    raise TypeError(msg)
+
+
+def load_environment_spec(path: Path) -> EnvironmentSpec:
+    """Load a collective environment specification from TOML.
+
+    Args:
+        path: TOML manifest path.
+
+    Returns:
+        Parsed environment specification.
+
+    Raises:
+        TypeError: If a manifest value has the wrong type.
+        tomllib.TOMLDecodeError: If the manifest is not valid TOML.
+    """
+    manifest_path = path.expanduser()
+    base_dir = manifest_path.parent
+    data = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    raw_tools = data.get("tools")
+    if not isinstance(raw_tools, list):
+        msg = "tools must be a list of tables"
+        raise TypeError(msg)
+
+    tools = tuple(parse_environment_tool(item, base_dir, index) for index, item in enumerate(raw_tools, start=1))
+    if not tools:
+        msg = "tools must contain at least one entry"
+        raise TypeError(msg)
+
+    return EnvironmentSpec(
+        name=require_string(data, "name"),
+        version=require_string(data, "version"),
+        tools=tools,
+        prefix=optional_manifest_path(data, "prefix"),
+        module_root=optional_manifest_path(data, "module_root"),
+        description=optional_string(data, "description"),
+        homepage=optional_string(data, "homepage"),
+        make_default=optional_bool(data, "default", True),
+    )
+
+
+def parse_environment_tool(data: object, base_dir: Path, index: int) -> EnvironmentToolSpec:
+    """Parse one tool entry from a collective environment manifest.
+
+    Args:
+        data: Raw TOML table for the tool.
+        base_dir: Manifest directory used to resolve relative files.
+        index: One-based tool index for error messages.
+
+    Returns:
+        Parsed tool specification.
+
+    Raises:
+        TypeError: If the entry is not a table or has invalid values.
+    """
+    if not isinstance(data, dict):
+        msg = f"tools[{index}] must be a TOML table"
+        raise TypeError(msg)
+
+    tool_type = require_string(data, "type")
+    name = require_string(data, "name")
+    tool = EnvironmentToolSpec(
+        tool_type=tool_type,
+        name=name,
+        version=optional_string(data, "version"),
+        package=optional_string(data, "package"),
+        binary=optional_manifest_path(data, "binary", base_dir),
+        script=optional_manifest_path(data, "script", base_dir),
+        python=optional_string(data, "python"),
+        indexes=optional_string_tuple(data, "indexes"),
+        find_links=optional_string_tuple(data, "find_links"),
+        description=optional_string(data, "description"),
+        homepage=optional_string(data, "homepage"),
+    )
+    validate_environment_tool(tool, index)
+    return tool
+
+
+def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
+    """Validate type-specific fields for one environment tool.
+
+    Args:
+        tool: Tool specification to validate.
+        index: One-based tool index for error messages.
+
+    Raises:
+        TypeError: If required type-specific fields are missing.
+    """
+    if tool.tool_type == "python":
+        if not tool.package:
+            msg = f"tools[{index}].package is required for python tools"
+            raise TypeError(msg)
+        return
+    if tool.tool_type == "rust":
+        if not tool.binary:
+            msg = f"tools[{index}].binary is required for rust tools"
+            raise TypeError(msg)
+        return
+    if tool.tool_type == "script":
+        if not tool.script:
+            msg = f"tools[{index}].script is required for script tools"
+            raise TypeError(msg)
+        return
+    msg = f"tools[{index}].type must be one of: python, rust, script"
+    raise TypeError(msg)
+
+
+def environment_actions(spec: EnvironmentSpec, paths: DeploymentPaths) -> tuple[str, ...]:
+    """Build human-readable actions for a collective environment deployment.
+
+    Args:
+        spec: Collective environment specification.
+        paths: Deployment paths for the environment module.
+
+    Returns:
+        Planned deployment actions.
+    """
+    actions = [
+        f"create install root: {paths.install_root}",
+        f"create bin dir: {paths.bin_dir}",
+    ]
+    tool_dir = paths.install_root / "uv-tools"
+    for tool in spec.tools:
+        if tool.tool_type == "python" and tool.package:
+            command = uv_install_command(tool.package, tool.python, tool.indexes, tool.find_links)
+            actions.append(
+                f"install python {tool.name}: "
+                f"UV_TOOL_DIR={shlex.quote(str(tool_dir))} "
+                f"UV_TOOL_BIN_DIR={shlex.quote(str(paths.bin_dir))} "
+                f"{shlex.join(command)}"
+            )
+        elif tool.tool_type == "rust" and tool.binary:
+            actions.append(f"copy rust {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
+        elif tool.tool_type == "script" and tool.script:
+            actions.append(f"copy script {tool.name}: {tool.script} -> {paths.bin_dir / tool.name}")
+
+    actions.append(f"write modulefile: {paths.modulefile}")
+    if spec.make_default and paths.default_version_file:
+        actions.append(f"write default version: {paths.default_version_file}")
+    return tuple(actions)
+
+
+def deploy_environment(
+    *,
+    spec: EnvironmentSpec,
+    module_root: Path,
+    prefix: Path,
+    dry_run: bool = False,
+) -> EnvironmentDeploymentResult:
+    """Deploy or preview a collective environment.
+
+    Args:
+        spec: Collective environment specification.
+        module_root: Root of the environment module tree.
+        prefix: Root installation prefix for deployed tools.
+        dry_run: Whether to report actions without mutating the filesystem.
+
+    Returns:
+        Deployment result with paths and action summaries.
+
+    Raises:
+        MissingExecutableError: If uv is needed but unavailable.
+        subprocess.CalledProcessError: If `uv tool install` fails.
+    """
+    paths = deployment_paths(module_root, prefix, spec.name, spec.version)
+    actions = environment_actions(spec, paths)
+
+    if dry_run:
+        return EnvironmentDeploymentResult(paths=paths, actions=actions)
+
+    paths.bin_dir.mkdir(parents=True, exist_ok=True)
+    tool_dir = paths.install_root / "uv-tools"
+    for tool in spec.tools:
+        if tool.tool_type == "python" and tool.package:
+            require_executable("uv")
+            env = os.environ.copy()
+            env["UV_TOOL_DIR"] = str(tool_dir)
+            env["UV_TOOL_BIN_DIR"] = str(paths.bin_dir)
+            subprocess.run(
+                uv_install_command(tool.package, tool.python, tool.indexes, tool.find_links),
+                check=True,
+                env=env,
+            )
+        elif tool.tool_type == "rust" and tool.binary:
+            copy_executable(tool.binary, paths.bin_dir / tool.name)
+        elif tool.tool_type == "script" and tool.script:
+            copy_executable(tool.script, paths.bin_dir / tool.name)
+
+    tool_names = ", ".join(tool.name for tool in spec.tools)
+    install_hint = f"collective environment containing: {tool_names}"
+    modulefile = render_modulefile(
+        ModuleSpec(
+            name=spec.name,
+            version=spec.version,
+            root=paths.install_root,
+            bin_dir=paths.bin_dir,
+            description=spec.description,
+            homepage=spec.homepage,
+            install_hint=install_hint,
+        )
+    )
+    write_text(paths.modulefile, modulefile)
+    write_default_version(paths, spec.version, spec.make_default)
+    return EnvironmentDeploymentResult(paths=paths, actions=actions)
 
 
 def deploy_python_tool(
@@ -306,6 +704,7 @@ def deploy_rust_tool(
     description: str | None = None,
     homepage: str | None = None,
     make_default: bool = True,
+    dry_run: bool = False,
 ) -> DeploymentPaths:
     """Deploy metadata for a Rust tool and optionally copy its binary.
 
@@ -319,17 +718,19 @@ def deploy_rust_tool(
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
+        dry_run: Whether to report paths without mutating the filesystem.
 
     Returns:
         Paths created or targeted by the deployment.
     """
     paths = deployment_paths(module_root, prefix, name, version)
-    paths.bin_dir.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        return paths
 
     if binary:
-        target = paths.bin_dir / name
-        shutil.copy2(binary, target)
-        target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        copy_executable(binary, paths.bin_dir / name)
+    else:
+        paths.bin_dir.mkdir(parents=True, exist_ok=True)
 
     modulefile = render_modulefile(
         ModuleSpec(
@@ -357,6 +758,7 @@ def deploy_script_tool(
     description: str | None = None,
     homepage: str | None = None,
     make_default: bool = True,
+    dry_run: bool = False,
 ) -> DeploymentPaths:
     """Deploy metadata for a shell script and optionally copy it into `bin`.
 
@@ -369,17 +771,19 @@ def deploy_script_tool(
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
+        dry_run: Whether to report paths without mutating the filesystem.
 
     Returns:
         Paths created or targeted by the deployment.
     """
     paths = deployment_paths(module_root, prefix, name, version)
-    paths.bin_dir.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        return paths
 
     if script:
-        target = paths.bin_dir / name
-        shutil.copy2(script, target)
-        target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        copy_executable(script, paths.bin_dir / name)
+    else:
+        paths.bin_dir.mkdir(parents=True, exist_ok=True)
 
     modulefile = render_modulefile(
         ModuleSpec(

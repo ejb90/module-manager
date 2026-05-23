@@ -55,3 +55,6 @@ module-manager deploy-python ruff 0.8.0 \
 Uninstall removes the default selector only when it still points at the version
 being removed. If another deployment has already made a newer version the
 default, that selector is left alone.
+
+Collective environments use the same modulefile behavior, but the versioned
+`bin` directory contains every tool listed in the manifest.

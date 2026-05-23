@@ -6,11 +6,21 @@ from pathlib import Path
 from typing import TypeVar
 
 import rich_click as click
+import tomllib
 from click import Command
 
 from . import __version__
 from .config import AppConfig, load_config
-from .deploy import UninstallResult, deploy_python_tool, deploy_rust_tool, deploy_script_tool, uninstall_tool
+from .deploy import (
+    EnvironmentDeploymentResult,
+    UninstallResult,
+    deploy_environment,
+    deploy_python_tool,
+    deploy_rust_tool,
+    deploy_script_tool,
+    load_environment_spec,
+    uninstall_tool,
+)
 
 click.rich_click.TEXT_MARKUP = "rich"
 click.rich_click.STYLE_COMMAND = "bold cyan"
@@ -91,7 +101,14 @@ def location_options(command: ClickCommand) -> ClickCommand:
     return command
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=(
+        "[bold]Deploy CLI tools behind GNU environment modulefiles.[/bold]\n\n"
+        "Build versioned modulefiles for Python tools, Rust binaries, shell scripts, "
+        "and collective environments."
+    ),
+)
 @click.version_option(__version__)
 @click.option(
     "--config",
@@ -114,7 +131,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
     ctx.obj = load_config(config)
 
 
-@main.command("deploy-python")
+@main.command("deploy-python", help="Write a modulefile for a uv tool install Python CLI.")
 @common_options
 @click.option("--package", "package", required=True, help="Package spec passed to uv tool install.")
 @click.option("--python", "python", help="Python interpreter/version passed to uv.")
@@ -195,12 +212,17 @@ def deploy_python(
     )
 
 
-@main.command("deploy-rust")
+@main.command("deploy-rust", help="Copy a Rust CLI binary and write a modulefile for it.")
 @common_options
 @click.option(
     "--binary",
     type=PATH,
     help="Compiled binary to copy into the versioned prefix.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print paths that would be written without creating files.",
 )
 @click.pass_obj
 def deploy_rust(
@@ -213,6 +235,7 @@ def deploy_rust(
     homepage: str | None,
     make_default: bool,
     binary: Path | None,
+    dry_run: bool,
 ) -> None:
     """Copy a Rust CLI binary and write a modulefile for it.
 
@@ -227,6 +250,7 @@ def deploy_rust(
         make_default: Whether to make this version the module default.
         binary: Optional compiled binary to copy into the deployed `bin`
             directory.
+        dry_run: Whether to report paths without mutating the filesystem.
 
     Raises:
         click.UsageError: If required paths are missing.
@@ -242,18 +266,28 @@ def deploy_rust(
         description=description,
         homepage=homepage,
         make_default=make_default,
+        dry_run=dry_run,
     )
     print_result(
-        paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
+        paths.modulefile,
+        paths.install_root,
+        paths.bin_dir,
+        paths.default_version_file if make_default else None,
+        dry_run,
     )
 
 
-@main.command("deploy-script")
+@main.command("deploy-script", help="Copy a shell script and write a modulefile for it.")
 @common_options
 @click.option(
     "--script",
     type=PATH,
     help="Shell script to copy into the versioned prefix.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print paths that would be written without creating files.",
 )
 @click.pass_obj
 def deploy_script(
@@ -266,6 +300,7 @@ def deploy_script(
     homepage: str | None,
     make_default: bool,
     script: Path | None,
+    dry_run: bool,
 ) -> None:
     """Copy a shell script and write a modulefile for it.
 
@@ -279,6 +314,7 @@ def deploy_script(
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
         script: Optional shell script to copy into the deployed `bin` directory.
+        dry_run: Whether to report paths without mutating the filesystem.
 
     Raises:
         click.UsageError: If required paths are missing.
@@ -294,13 +330,98 @@ def deploy_script(
         description=description,
         homepage=homepage,
         make_default=make_default,
+        dry_run=dry_run,
     )
     print_result(
-        paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
+        paths.modulefile,
+        paths.install_root,
+        paths.bin_dir,
+        paths.default_version_file if make_default else None,
+        dry_run,
     )
 
 
-@main.command("uninstall")
+@main.command("deploy-env", help="Deploy a collective environment from a TOML manifest.")
+@click.option(
+    "--file",
+    "manifest",
+    type=PATH,
+    required=True,
+    help="TOML collective environment manifest.",
+)
+@click.option(
+    "--prefix",
+    type=PATH,
+    help="Root installation prefix, overriding manifest and config defaults.",
+)
+@click.option(
+    "--module-root",
+    type=PATH,
+    help="Root of the module tree, overriding manifest and config defaults.",
+)
+@click.option(
+    "--default/--no-default",
+    "make_default",
+    default=None,
+    help="Override whether the manifest writes a module default selector.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Print actions that would run without creating files.",
+)
+@click.pass_obj
+def deploy_env(
+    config: AppConfig,
+    manifest: Path,
+    module_root: Path | None,
+    prefix: Path | None,
+    make_default: bool | None,
+    dry_run: bool,
+) -> None:
+    """Deploy a collective environment from a TOML manifest.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        manifest: TOML collective environment manifest path.
+        module_root: Optional module tree root overriding manifest and
+            configuration.
+        prefix: Optional install prefix overriding manifest and configuration.
+        make_default: Optional override for manifest default behavior.
+        dry_run: Whether to report actions without mutating the filesystem.
+
+    Raises:
+        click.ClickException: If the manifest cannot be parsed.
+        click.UsageError: If required paths are missing.
+    """
+    try:
+        spec = load_environment_spec(manifest)
+    except (OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise click.ClickException(str(error)) from error
+
+    resolved_module_root = require_path(
+        module_root or spec.module_root or config.module_root,
+        "module root",
+        "--module-root",
+    )
+    resolved_prefix = require_path(prefix or spec.prefix or config.prefix, "install prefix", "--prefix")
+    if make_default is not None:
+        spec = spec.__class__(
+            name=spec.name,
+            version=spec.version,
+            tools=spec.tools,
+            prefix=spec.prefix,
+            module_root=spec.module_root,
+            description=spec.description,
+            homepage=spec.homepage,
+            make_default=make_default,
+        )
+
+    result = deploy_environment(spec=spec, module_root=resolved_module_root, prefix=resolved_prefix, dry_run=dry_run)
+    print_environment_result(result, dry_run)
+
+
+@main.command("uninstall", help="Remove a deployed tool version and its modulefile.")
 @location_options
 @click.option(
     "--keep-default",
@@ -377,6 +498,7 @@ def print_result(
     install_root: Path,
     bin_dir: Path,
     default_version_file: Path | None = None,
+    dry_run: bool = False,
 ) -> None:
     """Print the paths produced by a deployment command.
 
@@ -385,12 +507,14 @@ def print_result(
         install_root: Versioned installation root.
         bin_dir: Executable directory exposed by the modulefile.
         default_version_file: Optional default selector path.
+        dry_run: Whether the command only previewed writes.
     """
-    click.echo(f"modulefile: {modulefile}")
-    click.echo(f"install root: {install_root}")
-    click.echo(f"bin dir: {bin_dir}")
+    prefix = "would write " if dry_run else ""
+    click.echo(f"{prefix}modulefile: {modulefile}")
+    click.echo(f"{prefix}install root: {install_root}")
+    click.echo(f"{prefix}bin dir: {bin_dir}")
     if default_version_file:
-        click.echo(f"default version: {default_version_file}")
+        click.echo(f"{prefix}default version: {default_version_file}")
 
 
 def print_uninstall_result(result: UninstallResult, dry_run: bool = False) -> None:
@@ -406,3 +530,15 @@ def print_uninstall_result(result: UninstallResult, dry_run: bool = False) -> No
         return
     for path in result.removed:
         click.echo(f"{action}: {path}")
+
+
+def print_environment_result(result: EnvironmentDeploymentResult, dry_run: bool = False) -> None:
+    """Print actions produced by a collective environment deployment.
+
+    Args:
+        result: Collective environment deployment result.
+        dry_run: Whether the command only previewed actions.
+    """
+    prefix = "would " if dry_run else ""
+    for action in result.actions:
+        click.echo(f"{prefix}{action}")

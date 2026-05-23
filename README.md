@@ -8,8 +8,8 @@
 [![PyPI](https://img.shields.io/pypi/v/env-module-manager)](https://pypi.org/project/env-module-manager/)
 [![Python versions](https://img.shields.io/pypi/pyversions/env-module-manager)](https://pypi.org/project/env-module-manager/)
 
-`module-manager` deploys versioned Python, Rust, and shell CLI tools behind GNU
-environment modulefiles for Linux/HPC systems.
+`module-manager` deploys versioned Python, Rust, shell, and collective CLI
+environments behind GNU environment modulefiles for Linux/HPC systems.
 
 It writes tools and modulefiles into predictable versioned locations:
 
@@ -48,6 +48,13 @@ module-manager deploy-script my-tool 1.0.0 \
   --module-root /prod/modulefiles
 ```
 
+Deploy a collective environment from a TOML manifest:
+
+```sh
+module-manager deploy-env --file dev-tools.toml --dry-run
+module-manager deploy-env --file dev-tools.toml
+```
+
 Use the generated module:
 
 ```sh
@@ -76,4 +83,5 @@ uv run mkdocs serve
 ```
 
 Start with `docs/index.md` for installation, configuration, Python tools, Rust
-tools, shell scripts, uninstall, and local development notes.
+tools, shell scripts, collective environments, uninstall, and local development
+notes.

@@ -1,7 +1,7 @@
 # module-manager
 
-`module-manager` deploys versioned Python, Rust, and shell CLI tools behind GNU
-environment modulefiles for Linux/HPC systems.
+`module-manager` deploys versioned Python, Rust, shell, and collective CLI
+environments behind GNU environment modulefiles for Linux/HPC systems.
 
 It is designed for administrators who want reproducible command-line tool
 installations under a production prefix such as `/prod/tools`, with matching
@@ -27,6 +27,9 @@ The generated modulefile is written to:
 /prod/modulefiles/<name>/<version>
 ```
 
+Collective environments use the same layout, but several tools share one
+versioned `bin` directory and one modulefile.
+
 ## Common Workflow
 
 ```sh
@@ -48,4 +51,5 @@ ruff --version
 - Deploy Python packages with [Python Tools](python-tools.md).
 - Deploy Rust binaries with [Rust Tools](rust-tools.md).
 - Deploy shell scripts with [Shell Scripts](shell-tools.md).
+- Deploy shared tool bundles with [Collective Environments](collective-environments.md).
 - Remove deployed versions with [Uninstall](uninstall.md).
