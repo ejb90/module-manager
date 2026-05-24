@@ -109,6 +109,18 @@ def test_python_tool_install_command_accepts_python() -> None:
     ]
 
 
+def test_python_tool_install_command_accepts_uv_config_file() -> None:
+    """Uv install commands should include a requested uv config file."""
+    assert uv_install_command("ruff==0.8.0", uv_config_file=Path("/prod/uv.toml")) == [
+        "uv",
+        "tool",
+        "--config-file",
+        "/prod/uv.toml",
+        "install",
+        "ruff==0.8.0",
+    ]
+
+
 def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Path) -> None:
     """Generated module help should show the package source options.
 
@@ -123,9 +135,11 @@ def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Pat
         prefix=tmp_path / "tools",
         indexes=("https://packages.example/simple",),
         find_links=("/prod/wheels",),
+        uv_config_file=Path("/prod/uv.toml"),
     )
 
     modulefile = paths.modulefile.read_text(encoding="utf-8")
+    assert "--config-file /prod/uv.toml" in modulefile
     assert "--index https://packages.example/simple" in modulefile
     assert "--find-links /prod/wheels" in modulefile
 
@@ -366,6 +380,7 @@ package = "ruff==0.8.0"
 python = "3.12"
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
+uv_config_file = "uv.toml"
 
 [[tools]]
 type = "script"
@@ -384,6 +399,7 @@ script = "scripts/helper"
     assert not spec.make_default
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].indexes == ("https://packages.example/simple",)
+    assert spec.tools[0].uv_config_file == tmp_path / "uv.toml"
     assert spec.tools[1].script == tmp_path / "scripts/helper"
 
 
@@ -491,6 +507,7 @@ type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
 python = "3.12"
+uv_config_file = "uv.toml"
 """.strip(),
         encoding="utf-8",
     )
@@ -502,7 +519,16 @@ python = "3.12"
         prefix=tmp_path / "tools",
     )
 
-    assert calls[0][0] == ["uv", "tool", "install", "--python", "3.12", "ruff==0.8.0"]
+    assert calls[0][0] == [
+        "uv",
+        "tool",
+        "--config-file",
+        str(tmp_path / "uv.toml"),
+        "install",
+        "--python",
+        "3.12",
+        "ruff==0.8.0",
+    ]
     assert calls[0][1]["UV_TOOL_DIR"] == str(result.paths.install_root / "uv-tools")
     assert calls[0][1]["UV_TOOL_BIN_DIR"] == str(result.paths.bin_dir)
     assert result.paths.modulefile.exists()

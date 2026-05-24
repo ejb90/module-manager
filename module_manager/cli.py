@@ -29,13 +29,60 @@ click.rich_click.STYLE_ARGUMENT = "bold yellow"
 click.rich_click.STYLE_SWITCH = "bold magenta"
 click.rich_click.STYLE_METAVAR = "yellow"
 click.rich_click.HEADER_TEXT = "module-manager"
-click.rich_click.FOOTER_TEXT = (
-    "Examples: [cyan]module-manager deploy-python ruff 0.8.0 --package "
-    "ruff==0.8.0 --prefix /prod/tools --module-root /prod/modulefiles[/cyan]"
-)
 
 PATH = click.Path(path_type=Path)
 ClickCommand = TypeVar("ClickCommand", bound=Command)
+
+TOP_LEVEL_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager deploy-python ruff 0.8.0 --package ruff==0.8.0 "
+    "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager deploy-rust ripgrep 14.1.1 --binary ./target/release/rg "
+    "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager deploy-script my-tool 1.0.0 --script ./scripts/my-tool "
+    "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager deploy-env --file dev-tools.toml[/cyan]\n\n"
+    "[cyan]module-manager uninstall ruff 0.8.0 --prefix /prod/tools --module-root /prod/modulefiles[/cyan]"
+)
+
+DEPLOY_PYTHON_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager deploy-python ruff 0.8.0 --package ruff==0.8.0 "
+    "--prefix /prod/tools --module-root /prod/modulefiles --execute-install[/cyan]\n\n"
+    "[cyan]module-manager deploy-python internal-tool 1.2.3 --package internal-tool==1.2.3 "
+    "--uv-config-file /prod/config/uv.toml --prefix /prod/tools --module-root /prod/modulefiles[/cyan]"
+)
+
+DEPLOY_RUST_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager deploy-rust ripgrep 14.1.1 --binary ./target/release/rg "
+    "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager deploy-rust ripgrep 14.1.1 --binary ./target/release/rg "
+    "--prefix /prod/tools --module-root /prod/modulefiles --dry-run[/cyan]"
+)
+
+DEPLOY_SCRIPT_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager deploy-script my-tool 1.0.0 --script ./scripts/my-tool "
+    "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager deploy-script my-tool 1.0.0 --script ./scripts/my-tool "
+    "--prefix /prod/tools --module-root /prod/modulefiles --dry-run[/cyan]"
+)
+
+DEPLOY_ENV_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager deploy-env --file dev-tools.toml[/cyan]\n\n"
+    "[cyan]module-manager deploy-env --file dev-tools.toml --prefix /scratch/tools "
+    "--module-root /scratch/modulefiles --dry-run[/cyan]"
+)
+
+UNINSTALL_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager uninstall ruff 0.8.0 --prefix /prod/tools "
+    "--module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager uninstall ruff 0.8.0 --prefix /prod/tools "
+    "--module-root /prod/modulefiles --dry-run[/cyan]"
+)
 
 
 def common_options(command: ClickCommand) -> ClickCommand:
@@ -108,6 +155,7 @@ def location_options(command: ClickCommand) -> ClickCommand:
         "Build versioned modulefiles for Python tools, Rust binaries, shell scripts, "
         "and collective environments."
     ),
+    epilog=TOP_LEVEL_EXAMPLES,
 )
 @click.version_option(__version__)
 @click.option(
@@ -131,7 +179,11 @@ def main(ctx: click.Context, config: Path | None) -> None:
     ctx.obj = load_config(config)
 
 
-@main.command("deploy-python", help="Write a modulefile for a uv tool install Python CLI.")
+@main.command(
+    "deploy-python",
+    help="Write a modulefile for a uv tool install Python CLI.",
+    epilog=DEPLOY_PYTHON_EXAMPLES,
+)
 @common_options
 @click.option("--package", "package", required=True, help="Package spec passed to uv tool install.")
 @click.option("--python", "python", help="Python interpreter/version passed to uv.")
@@ -146,6 +198,11 @@ def main(ctx: click.Context, config: Path | None) -> None:
     "find_links",
     multiple=True,
     help="Directory or HTML page of packages passed to uv. May be used more than once.",
+)
+@click.option(
+    "--uv-config-file",
+    type=PATH,
+    help="uv.toml file passed to uv tool install with --config-file.",
 )
 @click.option(
     "--execute-install",
@@ -166,6 +223,7 @@ def deploy_python(
     python: str | None,
     indexes: tuple[str, ...],
     find_links: tuple[str, ...],
+    uv_config_file: Path | None,
     execute_install: bool,
 ) -> None:
     """Write a modulefile for a [cyan]uv tool install[/cyan] Python CLI.
@@ -183,6 +241,7 @@ def deploy_python(
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        uv_config_file: Optional uv configuration file passed to `uv tool`.
         execute_install: Whether to run `uv tool install` immediately.
 
     Raises:
@@ -204,6 +263,7 @@ def deploy_python(
         python=python,
         indexes=indexes or config.indexes,
         find_links=find_links or config.find_links,
+        uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
         execute_install=execute_install,
         make_default=make_default,
     )
@@ -212,7 +272,11 @@ def deploy_python(
     )
 
 
-@main.command("deploy-rust", help="Copy a Rust CLI binary and write a modulefile for it.")
+@main.command(
+    "deploy-rust",
+    help="Copy a Rust CLI binary and write a modulefile for it.",
+    epilog=DEPLOY_RUST_EXAMPLES,
+)
 @common_options
 @click.option(
     "--binary",
@@ -277,7 +341,11 @@ def deploy_rust(
     )
 
 
-@main.command("deploy-script", help="Copy a shell script and write a modulefile for it.")
+@main.command(
+    "deploy-script",
+    help="Copy a shell script and write a modulefile for it.",
+    epilog=DEPLOY_SCRIPT_EXAMPLES,
+)
 @common_options
 @click.option(
     "--script",
@@ -341,7 +409,11 @@ def deploy_script(
     )
 
 
-@main.command("deploy-env", help="Deploy a collective environment from a TOML manifest.")
+@main.command(
+    "deploy-env",
+    help="Deploy a collective environment from a TOML manifest.",
+    epilog=DEPLOY_ENV_EXAMPLES,
+)
 @click.option(
     "--file",
     "manifest",
@@ -421,7 +493,11 @@ def deploy_env(
     print_environment_result(result, dry_run)
 
 
-@main.command("uninstall", help="Remove a deployed tool version and its modulefile.")
+@main.command(
+    "uninstall",
+    help="Remove a deployed tool version and its modulefile.",
+    epilog=UNINSTALL_EXAMPLES,
+)
 @location_options
 @click.option(
     "--keep-default",

@@ -44,6 +44,7 @@ module-manager deploy-python NAME VERSION \
   [--python PYTHON] \
   [--index URL] \
   [--find-links PATH_OR_URL] \
+  [--uv-config-file PATH] \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \

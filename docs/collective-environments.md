@@ -22,6 +22,7 @@ package = "ruff==0.8.0"
 python = "3.12"
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
+uv_config_file = "/prod/config/uv.toml"
 
 [[tools]]
 type = "rust"

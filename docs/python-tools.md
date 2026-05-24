@@ -51,6 +51,29 @@ module-manager deploy-python gitconductor 0.1.0 \
 
 `--find-links` may be used more than once.
 
+## Use a uv Config File
+
+Pass a specific uv configuration file to `uv tool install`:
+
+```sh
+module-manager deploy-python internal-tool 1.2.3 \
+  --package internal-tool==1.2.3 \
+  --uv-config-file /prod/config/uv.toml \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+The same option can be set in the module-manager config file:
+
+```toml
+[python]
+uv_config_file = "/prod/config/uv.toml"
+```
+
+Use uv's own `UV_CONFIG_FILE` environment variable if you want to configure uv
+through the environment.
+
 ## Deploy from VCS
 
 `--package` is passed directly to `uv tool install`, so VCS package specs are

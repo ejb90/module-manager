@@ -56,12 +56,16 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "https://packages.example/simple",
                 "--find-links",
                 "/prod/wheels",
+                "--uv-config-file",
+                "/prod/uv.toml",
             ],
         )
+        modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
 
     assert result.exit_code == 0
     assert "modulefile: modules/ruff/0.8.0" in result.output
     assert "default version: modules/ruff/.version" in result.output
+    assert "--config-file /prod/uv.toml" in modulefile
 
 
 def test_deploy_python_command_uses_config_defaults() -> None:
@@ -78,6 +82,7 @@ module_root = "modules"
 [python]
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
+uv_config_file = "uv.toml"
 """.strip(),
             encoding="utf-8",
         )
@@ -93,9 +98,11 @@ find_links = ["/prod/wheels"]
                 "ruff==0.8.0",
             ],
         )
+        modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
 
     assert result.exit_code == 0
     assert "modulefile: modules/ruff/0.8.0" in result.output
+    assert "--config-file uv.toml" in modulefile
 
 
 def test_cli_options_override_config_defaults() -> None:
