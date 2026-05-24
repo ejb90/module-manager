@@ -26,3 +26,13 @@ The generated modulefile prepends the deployed `bin` directory to `PATH`.
 Deployments make the deployed version the module default, so `module load
 ripgrep` resolves to `ripgrep/14.1.1`. Add `--no-default` to leave the current
 default unchanged.
+
+Preview the paths that would be written without copying the binary:
+
+```sh
+module-manager deploy-rust ripgrep 14.1.1 \
+  --binary ./target/release/rg \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --dry-run
+```

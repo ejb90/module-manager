@@ -156,6 +156,37 @@ def test_deploy_rust_command_copies_binary() -> None:
     assert "modulefile: modules/ripgrep/14.1.1" in result.output
 
 
+def test_deploy_rust_command_dry_run_does_not_write_files() -> None:
+    """Dry-run Rust deployment should report paths without creating them."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        binary = Path(fs) / "rg"
+        binary.write_text("binary", encoding="utf-8")
+        result = runner.invoke(
+            main,
+            [
+                "deploy-rust",
+                "ripgrep",
+                "14.1.1",
+                "--binary",
+                str(binary),
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--dry-run",
+            ],
+        )
+        install_root_exists = Path("tools/ripgrep/14.1.1").exists()
+        modulefile_exists = Path("modules/ripgrep/14.1.1").exists()
+
+    assert result.exit_code == 0
+    assert "would write modulefile: modules/ripgrep/14.1.1" in result.output
+    assert not install_root_exists
+    assert not modulefile_exists
+
+
 def test_deploy_script_command_copies_script() -> None:
     """The script deploy command should copy the script and report the modulefile."""
     runner = CliRunner()
@@ -186,6 +217,37 @@ def test_deploy_script_command_copies_script() -> None:
     assert "modulefile: modules/hello/1.0.0" in result.output
     assert deployed_exists
     assert deployed_is_executable
+
+
+def test_deploy_script_command_dry_run_does_not_write_files() -> None:
+    """Dry-run script deployment should report paths without creating them."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        script = Path(fs) / "hello.sh"
+        script.write_text("#!/usr/bin/env bash\necho hello\n", encoding="utf-8")
+        result = runner.invoke(
+            main,
+            [
+                "deploy-script",
+                "hello",
+                "1.0.0",
+                "--script",
+                str(script),
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--dry-run",
+            ],
+        )
+        deployed_exists = Path("tools/hello/1.0.0/bin/hello").exists()
+        modulefile_exists = Path("modules/hello/1.0.0").exists()
+
+    assert result.exit_code == 0
+    assert "would write modulefile: modules/hello/1.0.0" in result.output
+    assert not deployed_exists
+    assert not modulefile_exists
 
 
 def test_deploy_command_can_skip_default_version() -> None:
@@ -291,3 +353,91 @@ def test_uninstall_command_dry_run_preserves_deployed_version() -> None:
     assert result.exit_code == 0
     assert "would remove: tools/ripgrep/14.1.1" in result.output
     assert install_root_exists
+
+
+def test_deploy_env_command_dry_run_reads_manifest() -> None:
+    """Dry-run environment deployment should report manifest actions only."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        manifest = Path("env.toml")
+        manifest.write_text(
+            """
+name = "dev-tools"
+version = "2026.05"
+prefix = "tools"
+module_root = "modules"
+
+[[tools]]
+type = "python"
+name = "ruff"
+version = "0.8.0"
+package = "ruff==0.8.0"
+indexes = ["https://packages.example/simple"]
+""".strip(),
+            encoding="utf-8",
+        )
+        result = runner.invoke(main, ["deploy-env", "--file", str(manifest), "--dry-run"])
+        install_root_exists = Path("tools/dev-tools/2026.05").exists()
+
+    assert result.exit_code == 0
+    assert "would create install root: tools/dev-tools/2026.05" in result.output
+    assert "would install python ruff:" in result.output
+    assert "--index https://packages.example/simple" in result.output
+    assert not install_root_exists
+
+
+def test_deploy_env_command_reports_invalid_manifest() -> None:
+    """Invalid environment manifests should produce a Click error."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        manifest = Path("env.toml")
+        manifest.write_text('name = "broken"\n', encoding="utf-8")
+        result = runner.invoke(main, ["deploy-env", "--file", str(manifest)])
+
+    assert result.exit_code != 0
+    assert "tools must be a list of tables" in result.output
+
+
+def test_deploy_env_command_writes_collective_module() -> None:
+    """Environment deployment should copy tools into one shared module."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        binary = Path(fs) / "rg"
+        script = Path(fs) / "hello.sh"
+        binary.write_text("binary", encoding="utf-8")
+        script.write_text("#!/usr/bin/env bash\necho hello\n", encoding="utf-8")
+        manifest = Path("env.toml")
+        manifest.write_text(
+            f"""
+name = "dev-tools"
+version = "2026.05"
+prefix = "tools"
+module_root = "modules"
+
+[[tools]]
+type = "rust"
+name = "ripgrep"
+version = "14.1.1"
+binary = "{binary}"
+
+[[tools]]
+type = "script"
+name = "hello"
+version = "1.0.0"
+script = "{script}"
+""".strip(),
+            encoding="utf-8",
+        )
+        result = runner.invoke(main, ["deploy-env", "--file", str(manifest)])
+        ripgrep_exists = Path("tools/dev-tools/2026.05/bin/ripgrep").exists()
+        hello_exists = Path("tools/dev-tools/2026.05/bin/hello").exists()
+        modulefile_exists = Path("modules/dev-tools/2026.05").exists()
+
+    assert result.exit_code == 0
+    assert "create install root: tools/dev-tools/2026.05" in result.output
+    assert ripgrep_exists
+    assert hello_exists
+    assert modulefile_exists

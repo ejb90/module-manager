@@ -63,9 +63,15 @@ Supported deploy commands:
   `uv tool install`.
 * `deploy-rust`: copies a compiled binary into the versioned `bin` directory.
 * `deploy-script`: copies a shell script into the versioned `bin` directory.
+* `deploy-env`: reads a TOML manifest and deploys Python, Rust, and script
+  tools into one shared environment module.
 
 Deployments write `<module-root>/<name>/.version` by default so `module load
 <name>` resolves to the deployed version. Use `--no-default` to skip that.
+
+Rust, script, collective environment, and uninstall workflows support
+`--dry-run`. Individual `deploy-python` intentionally keeps `--execute-install`
+for its two-step metadata-first workflow.
 
 `uninstall` removes one versioned install root and modulefile. It removes the
 default selector only when it still points at the version being removed. Use
