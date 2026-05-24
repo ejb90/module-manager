@@ -90,6 +90,9 @@ Common settings:
 * `module_root` or `MODULE_MANAGER_MODULE_ROOT`
 * `[python].indexes`, `MODULE_MANAGER_INDEX`, or `MODULE_MANAGER_INDEXES`
 * `[python].find_links` or `MODULE_MANAGER_FIND_LINKS`
+* `[python].uv_config_file` for the uv `--config-file` option. Do not add a
+  `MODULE_MANAGER_*` wrapper for this; users should use uv's `UV_CONFIG_FILE`
+  environment variable when they want environment-based uv configuration.
 
 ## Documentation
 

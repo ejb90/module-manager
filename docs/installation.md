@@ -38,16 +38,22 @@ in every new shell.
 
 ## Install module-manager
 
+From PyPI with pip:
+
+```sh
+pip install env-module-manager
+```
+
+As a uv-managed tool:
+
+```sh
+uv tool install env-module-manager
+```
+
 From a local checkout:
 
 ```sh
 uv tool install .
-```
-
-From PyPI:
-
-```sh
-uv tool install env-module-manager
 ```
 
 During development, use:

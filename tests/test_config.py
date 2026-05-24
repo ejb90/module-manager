@@ -22,6 +22,7 @@ module_root = "/scratch/modules"
 [python]
 indexes = ["https://packages.example/simple"]
 find_links = ["/scratch/wheels"]
+uv_config_file = "/scratch/uv.toml"
 """.strip(),
         encoding="utf-8",
     )
@@ -31,6 +32,7 @@ find_links = ["/scratch/wheels"]
         module_root=Path("/scratch/modules"),
         indexes=("https://packages.example/simple",),
         find_links=("/scratch/wheels",),
+        uv_config_file=Path("/scratch/uv.toml"),
     )
 
 

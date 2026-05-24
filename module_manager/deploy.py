@@ -62,6 +62,7 @@ class EnvironmentToolSpec:
         name: Tool name used for copied binaries and reporting.
         version: Optional source tool version for documentation.
         package: Python package spec passed to `uv tool install`.
+        uv_config_file: uv configuration file passed to `uv tool`.
         binary: Rust binary path to copy into the shared `bin` directory.
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
@@ -75,6 +76,7 @@ class EnvironmentToolSpec:
     name: str
     version: str | None = None
     package: str | None = None
+    uv_config_file: Path | None = None
     binary: Path | None = None
     script: Path | None = None
     python: str | None = None
@@ -148,6 +150,7 @@ def uv_install_command(
     python: str | None = None,
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
+    uv_config_file: Path | None = None,
 ) -> list[str]:
     """Build the uv command used to install a Python CLI tool.
 
@@ -156,11 +159,15 @@ def uv_install_command(
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs.
         find_links: Wheelhouse directories or HTML package pages.
+        uv_config_file: Optional uv configuration file passed to `uv tool`.
 
     Returns:
         Tokenized uv command suitable for `subprocess.run`.
     """
-    command = ["uv", "tool", "install"]
+    command = ["uv", "tool"]
+    if uv_config_file:
+        command.extend(["--config-file", str(uv_config_file)])
+    command.append("install")
     if python:
         command.extend(["--python", python])
     for index in indexes:
@@ -482,6 +489,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         name=name,
         version=optional_string(data, "version"),
         package=optional_string(data, "package"),
+        uv_config_file=optional_manifest_path(data, "uv_config_file", base_dir),
         binary=optional_manifest_path(data, "binary", base_dir),
         script=optional_manifest_path(data, "script", base_dir),
         python=optional_string(data, "python"),
@@ -540,7 +548,13 @@ def environment_actions(spec: EnvironmentSpec, paths: DeploymentPaths) -> tuple[
     tool_dir = paths.install_root / "uv-tools"
     for tool in spec.tools:
         if tool.tool_type == "python" and tool.package:
-            command = uv_install_command(tool.package, tool.python, tool.indexes, tool.find_links)
+            command = uv_install_command(
+                tool.package,
+                tool.python,
+                tool.indexes,
+                tool.find_links,
+                tool.uv_config_file,
+            )
             actions.append(
                 f"install python {tool.name}: "
                 f"UV_TOOL_DIR={shlex.quote(str(tool_dir))} "
@@ -595,7 +609,13 @@ def deploy_environment(
             env["UV_TOOL_DIR"] = str(tool_dir)
             env["UV_TOOL_BIN_DIR"] = str(paths.bin_dir)
             subprocess.run(
-                uv_install_command(tool.package, tool.python, tool.indexes, tool.find_links),
+                uv_install_command(
+                    tool.package,
+                    tool.python,
+                    tool.indexes,
+                    tool.find_links,
+                    tool.uv_config_file,
+                ),
                 check=True,
                 env=env,
             )
@@ -634,6 +654,7 @@ def deploy_python_tool(
     python: str | None = None,
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
+    uv_config_file: Path | None = None,
     execute_install: bool = False,
     make_default: bool = True,
 ) -> DeploymentPaths:
@@ -650,6 +671,7 @@ def deploy_python_tool(
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        uv_config_file: Optional uv configuration file passed to `uv tool`.
         execute_install: Whether to run `uv tool install` immediately.
         make_default: Whether to make this version the module default.
 
@@ -664,7 +686,7 @@ def deploy_python_tool(
     paths = deployment_paths(module_root, prefix, name, version)
     paths.bin_dir.mkdir(parents=True, exist_ok=True)
     tool_dir = paths.install_root / "uv-tools"
-    command = uv_install_command(package, python, indexes, find_links)
+    command = uv_install_command(package, python, indexes, find_links, uv_config_file)
 
     if execute_install:
         require_executable("uv")

@@ -18,6 +18,20 @@ It writes tools and modulefiles into predictable versioned locations:
 /prod/modulefiles/<name>/<version>
 ```
 
+## Installation
+
+Install from PyPI:
+
+```sh
+pip install env-module-manager
+```
+
+Or install as a uv-managed tool:
+
+```sh
+uv tool install env-module-manager
+```
+
 ## Quick Start
 
 Deploy a Python CLI with `uv tool install`:
@@ -76,12 +90,5 @@ module-manager uninstall ruff 0.8.0 \
 
 ## Documentation
 
-Full documentation lives in `docs/` and can be served with MkDocs:
-
-```sh
-uv run mkdocs serve
-```
-
-Start with `docs/index.md` for installation, configuration, Python tools, Rust
-tools, shell scripts, collective environments, uninstall, and local development
-notes.
+Read the full documentation on
+[Read the Docs](https://module-manager.readthedocs.io/).

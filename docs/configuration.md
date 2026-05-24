@@ -17,6 +17,7 @@ module_root = "/prod/modulefiles"
 [python]
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
+uv_config_file = "/prod/config/uv.toml"
 ```
 
 Use a different config file with `--config`:
@@ -35,6 +36,10 @@ export MODULE_MANAGER_FIND_LINKS=/prod/wheels,/prod/more-wheels
 ```
 
 `MODULE_MANAGER_CONFIG` can point to an alternate TOML config file.
+
+There is no `MODULE_MANAGER_*` environment variable for uv configuration files.
+Use uv's own `UV_CONFIG_FILE` environment variable when you want to set that via
+the environment.
 
 ## CLI Precedence
 
