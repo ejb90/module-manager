@@ -29,7 +29,7 @@ def test_deploy_python_real_uv_install_uses_cli_roots(tmp_path: Path, monkeypatc
         [
             "deploy-python",
             "module-manager",
-            "0.4.0",
+            "0.5.0",
             "--package",
             str(project_root),
             "--prefix",
@@ -40,10 +40,10 @@ def test_deploy_python_real_uv_install_uses_cli_roots(tmp_path: Path, monkeypatc
         ],
     )
 
-    install_root = prefix / "module-manager" / "0.4.0"
+    install_root = prefix / "module-manager" / "0.5.0"
     assert result.exit_code == 0, result.output
     assert (install_root / "bin" / "module-manager").exists()
     assert (install_root / "uv-tools" / "env-module-manager" / "uv-receipt.toml").exists()
-    assert (module_root / "module-manager" / "0.4.0").is_file()
+    assert (module_root / "module-manager" / "0.5.0").is_file()
     assert not inherited_tool_dir.exists()
     assert not inherited_bin_dir.exists()
