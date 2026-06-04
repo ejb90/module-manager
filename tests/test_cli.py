@@ -127,7 +127,8 @@ def test_deploy_command_rejects_matching_prefix_and_module_root() -> None:
         collision_path_exists = Path("test/gitconductor/0.7.0").exists()
 
     assert result.exit_code != 0
-    assert "--module-root and --prefix must resolve to different directories" in result.output
+    output = " ".join(strip_ansi(result.output).split())
+    assert "--module-root and --prefix must resolve to different directories" in output
     assert not collision_path_exists
 
 
