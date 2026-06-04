@@ -250,8 +250,10 @@ def deploy_python(
             `PATH`.
         subprocess.CalledProcessError: If `uv tool install` fails.
     """
-    resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
-    resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
+    resolved_module_root, resolved_prefix = require_locations(
+        module_root or config.module_root,
+        prefix or config.prefix,
+    )
     paths = deploy_python_tool(
         name=name,
         version=version,
@@ -319,8 +321,10 @@ def deploy_rust(
     Raises:
         click.UsageError: If required paths are missing.
     """
-    resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
-    resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
+    resolved_module_root, resolved_prefix = require_locations(
+        module_root or config.module_root,
+        prefix or config.prefix,
+    )
     paths = deploy_rust_tool(
         name=name,
         version=version,
@@ -387,8 +391,10 @@ def deploy_script(
     Raises:
         click.UsageError: If required paths are missing.
     """
-    resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
-    resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
+    resolved_module_root, resolved_prefix = require_locations(
+        module_root or config.module_root,
+        prefix or config.prefix,
+    )
     paths = deploy_script_tool(
         name=name,
         version=version,
@@ -471,12 +477,10 @@ def deploy_env(
     except (OSError, TypeError, tomllib.TOMLDecodeError) as error:
         raise click.ClickException(str(error)) from error
 
-    resolved_module_root = require_path(
+    resolved_module_root, resolved_prefix = require_locations(
         module_root or spec.module_root or config.module_root,
-        "module root",
-        "--module-root",
+        prefix or spec.prefix or config.prefix,
     )
-    resolved_prefix = require_path(prefix or spec.prefix or config.prefix, "install prefix", "--prefix")
     if make_default is not None:
         spec = spec.__class__(
             name=spec.name,
@@ -533,8 +537,10 @@ def uninstall(
     Raises:
         click.UsageError: If required paths are missing.
     """
-    resolved_module_root = require_path(module_root or config.module_root, "module root", "--module-root")
-    resolved_prefix = require_path(prefix or config.prefix, "install prefix", "--prefix")
+    resolved_module_root, resolved_prefix = require_locations(
+        module_root or config.module_root,
+        prefix or config.prefix,
+    )
     result = uninstall_tool(
         name=name,
         version=version,
@@ -567,6 +573,31 @@ def require_path(value: Path | None, label: str, option: str) -> Path:
         )
         raise click.UsageError(msg)
     return value.expanduser()
+
+
+def require_locations(module_root: Path | None, prefix: Path | None) -> tuple[Path, Path]:
+    """Return distinct configured module and installation roots.
+
+    Args:
+        module_root: Candidate root of the module tree.
+        prefix: Candidate installation prefix.
+
+    Returns:
+        Expanded module root and installation prefix.
+
+    Raises:
+        click.UsageError: If either path is missing or both resolve to the same
+            directory.
+    """
+    resolved_module_root = require_path(module_root, "module root", "--module-root")
+    resolved_prefix = require_path(prefix, "install prefix", "--prefix")
+    if resolved_module_root.resolve() == resolved_prefix.resolve():
+        msg = (
+            "--module-root and --prefix must resolve to different directories; "
+            "otherwise the versioned modulefile collides with the install root."
+        )
+        raise click.UsageError(msg)
+    return resolved_module_root, resolved_prefix
 
 
 def print_result(

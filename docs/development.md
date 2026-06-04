@@ -14,6 +14,14 @@ uv run ruff format --check .
 uv run pytest
 ```
 
+Run the real `uv tool install` integration test with:
+
+```sh
+uv run pytest tests/test_integration.py -m integration --no-cov
+```
+
+CI runs this integration test on Linux and macOS.
+
 Build distributions:
 
 ```sh
