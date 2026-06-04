@@ -3,6 +3,10 @@
 Python CLIs are installed with `uv tool install`. Each deployed version gets
 isolated `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR` paths.
 
+The install subprocess ignores inherited `UV_TOOL_*` settings so the managed
+destination and install behavior are not changed by the invoking environment.
+Other uv settings, including `UV_CONFIG_FILE`, are preserved.
+
 `uv` is an external runtime requirement for `--execute-install`. It is not a
 Python package dependency because `module-manager` shells out to the `uv`
 executable and is intended to be installable by `uv` itself.

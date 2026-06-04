@@ -18,6 +18,8 @@ It writes tools and modulefiles into predictable versioned locations:
 /prod/modulefiles/<name>/<version>
 ```
 
+The installation prefix and module root must be different directories.
+
 ## Installation
 
 Install from PyPI:

@@ -218,6 +218,7 @@ __marimo__/
 
 # Local
 .gitconductor
+/test/
 
 # OS-generated files
 .DS_Store

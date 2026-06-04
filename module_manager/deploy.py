@@ -178,6 +178,23 @@ def uv_install_command(
     return command
 
 
+def uv_install_environment(tool_dir: Path, bin_dir: Path) -> dict[str, str]:
+    """Build an isolated environment for a managed uv tool installation.
+
+    Args:
+        tool_dir: Directory where uv should store installed tools.
+        bin_dir: Directory where uv should install tool executables.
+
+    Returns:
+        Process environment with inherited `UV_TOOL_*` settings removed and
+        the managed tool destinations set.
+    """
+    env = {key: value for key, value in os.environ.items() if not key.startswith("UV_TOOL_")}
+    env["UV_TOOL_DIR"] = str(tool_dir)
+    env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+    return env
+
+
 def write_text(path: Path, content: str) -> None:
     """Write UTF-8 text to a path, creating parent directories first.
 
@@ -605,9 +622,6 @@ def deploy_environment(
     for tool in spec.tools:
         if tool.tool_type == "python" and tool.package:
             require_executable("uv")
-            env = os.environ.copy()
-            env["UV_TOOL_DIR"] = str(tool_dir)
-            env["UV_TOOL_BIN_DIR"] = str(paths.bin_dir)
             subprocess.run(
                 uv_install_command(
                     tool.package,
@@ -617,7 +631,7 @@ def deploy_environment(
                     tool.uv_config_file,
                 ),
                 check=True,
-                env=env,
+                env=uv_install_environment(tool_dir, paths.bin_dir),
             )
         elif tool.tool_type == "rust" and tool.binary:
             copy_executable(tool.binary, paths.bin_dir / tool.name)
@@ -690,10 +704,7 @@ def deploy_python_tool(
 
     if execute_install:
         require_executable("uv")
-        env = os.environ.copy()
-        env["UV_TOOL_DIR"] = str(tool_dir)
-        env["UV_TOOL_BIN_DIR"] = str(paths.bin_dir)
-        subprocess.run(command, check=True, env=env)
+        subprocess.run(command, check=True, env=uv_install_environment(tool_dir, paths.bin_dir))
 
     install_hint = (
         f"UV_TOOL_DIR={shlex.quote(str(tool_dir))} "

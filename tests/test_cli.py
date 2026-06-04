@@ -105,6 +105,33 @@ uv_config_file = "uv.toml"
     assert "--config-file uv.toml" in modulefile
 
 
+def test_deploy_command_rejects_matching_prefix_and_module_root() -> None:
+    """Deployment roots must differ to avoid a modulefile path collision."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "deploy-python",
+                "gitconductor",
+                "0.7.0",
+                "--package",
+                "gitconductor",
+                "--prefix",
+                "test",
+                "--module-root",
+                "test",
+            ],
+        )
+        collision_path_exists = Path("test/gitconductor/0.7.0").exists()
+
+    assert result.exit_code != 0
+    output = " ".join(strip_ansi(result.output).split())
+    assert "--module-root and --prefix must resolve to different directories" in output
+    assert not collision_path_exists
+
+
 def test_cli_options_override_config_defaults() -> None:
     """CLI options should take precedence over configured defaults."""
     runner = CliRunner()

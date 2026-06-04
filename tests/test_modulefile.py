@@ -14,6 +14,7 @@ from module_manager.deploy import (
     require_executable,
     uninstall_tool,
     uv_install_command,
+    uv_install_environment,
 )
 from module_manager.modulefile import (
     ModuleSpec,
@@ -119,6 +120,28 @@ def test_python_tool_install_command_accepts_uv_config_file() -> None:
         "install",
         "ruff==0.8.0",
     ]
+
+
+def test_uv_install_environment_ignores_inherited_uv_tool_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Managed uv installs should ignore inherited tool-specific settings.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        monkeypatch: Pytest helper used to control the process environment.
+    """
+    monkeypatch.setenv("UV_TOOL_DIR", "/inherited/tools")
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", "/inherited/bin")
+    monkeypatch.setenv("UV_TOOL_UPGRADE", "1")
+    monkeypatch.setenv("UV_CONFIG_FILE", "/prod/uv.toml")
+
+    env = uv_install_environment(tmp_path / "tools", tmp_path / "bin")
+
+    assert env["UV_TOOL_DIR"] == str(tmp_path / "tools")
+    assert env["UV_TOOL_BIN_DIR"] == str(tmp_path / "bin")
+    assert "UV_TOOL_UPGRADE" not in env
+    assert env["UV_CONFIG_FILE"] == "/prod/uv.toml"
 
 
 def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Path) -> None:

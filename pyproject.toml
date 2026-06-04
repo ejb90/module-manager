@@ -1,6 +1,6 @@
 [project]
 name = "env-module-manager"
-version = "0.4.0"
+version = "0.5.0"
 description = "Deploy Python, Rust, shell, and collective CLI environments behind GNU environment modulefiles"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -111,8 +111,13 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 minversion = "7.0"
 pythonpath = ["."]
+markers = [
+    "integration: executes external tools for end-to-end verification",
+]
 addopts = [
     "-ra",
+    "-m",
+    "not integration",
     "--strict-markers",
     "--strict-config",
     "--tb=short",

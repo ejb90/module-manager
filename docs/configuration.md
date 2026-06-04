@@ -20,6 +20,10 @@ find_links = ["/prod/wheels"]
 uv_config_file = "/prod/config/uv.toml"
 ```
 
+`prefix` and `module_root` must resolve to different directories. Using the
+same root makes `<prefix>/<name>/<version>` both an installation directory and
+a modulefile path.
+
 Use a different config file with `--config`:
 
 ```sh
