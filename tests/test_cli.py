@@ -3,9 +3,11 @@
 import re
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from module_manager.cli import main
+from module_manager.deploy import ConstraintGenerationResult
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -133,6 +135,56 @@ def test_deploy_command_rejects_matching_prefix_and_module_root() -> None:
     output = " ".join(strip_ansi(result.output).split())
     assert "--module-root and --prefix must resolve to different directories" in output
     assert not collision_path_exists
+
+
+def test_auto_constraints_command_writes_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The auto-constraints command should report the generated file.
+
+    Args:
+        monkeypatch: Pytest helper used to replace constraint generation.
+    """
+    runner = CliRunner()
+    calls: list[dict[str, object]] = []
+
+    def fake_generate_constraints(**kwargs: object) -> ConstraintGenerationResult:
+        """Record generation options."""
+        calls.append(kwargs)
+        return ConstraintGenerationResult(
+            output_file=Path("constraints.txt"),
+            requirements=("url-tool", "url-dep @ file:///tmp/url-dep"),
+            discovered_url_dependencies=("url-dep @ file:///tmp/url-dep",),
+            iterations=2,
+        )
+
+    monkeypatch.setattr("module_manager.cli.generate_constraints", fake_generate_constraints)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "auto-constraints",
+                "url-tool",
+                "--index",
+                "https://packages.example/simple",
+                "--output",
+                "constraints.txt",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert calls == [
+        {
+            "package": "url-tool",
+            "output_file": Path("constraints.txt"),
+            "python": None,
+            "indexes": ("https://packages.example/simple",),
+            "find_links": (),
+            "uv_config_file": None,
+        }
+    ]
+    assert "constraints: constraints.txt" in result.output
+    assert "discovered URL dependencies: 1" in result.output
+    assert "url-dep @ file:///tmp/url-dep" in result.output
 
 
 def test_cli_options_override_config_defaults() -> None:

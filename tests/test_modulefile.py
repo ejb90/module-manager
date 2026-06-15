@@ -1,5 +1,6 @@
 """Modulefile rendering and deployment helper tests."""
 
+import subprocess
 from pathlib import Path
 from shlex import quote as shlex_quote
 
@@ -11,9 +12,12 @@ from module_manager.deploy import (
     deploy_python_tool,
     deploy_rust_tool,
     deploy_script_tool,
+    discover_url_requirements,
+    generate_constraints,
     load_environment_spec,
     require_executable,
     uninstall_tool,
+    uv_compile_command,
     uv_install_command,
     uv_install_environment,
 )
@@ -124,6 +128,95 @@ def test_python_tool_install_command_accepts_uv_config_file() -> None:
         "install",
         "ruff==0.8.0",
     ]
+
+
+def test_uv_compile_command_accepts_sources_and_config() -> None:
+    """Uv compile commands should include resolver and config options."""
+    assert uv_compile_command(
+        Path("/prod/constraints.txt"),
+        python="3.12",
+        indexes=("https://packages.example/simple",),
+        find_links=("/prod/wheels",),
+        uv_config_file=Path("/prod/uv.toml"),
+    ) == [
+        "uv",
+        "--config-file",
+        "/prod/uv.toml",
+        "pip",
+        "compile",
+        "-",
+        "--output-file",
+        "/prod/constraints.txt",
+        "--no-header",
+        "--no-annotate",
+        "--python",
+        "3.12",
+        "--index",
+        "https://packages.example/simple",
+        "--find-links",
+        "/prod/wheels",
+    ]
+
+
+def test_discover_url_requirements_extracts_uv_suggestions() -> None:
+    """Uv URL dependency suggestions should be parsed from errors."""
+    output = """
+Package `url-dep` was included as a URL dependency. URL dependencies
+must be expressed as direct requirements or constraints. Consider adding
+`url-dep @ file:///tmp/url-dep` to your dependencies or constraints file.
+""".strip()
+
+    assert discover_url_requirements(output) == ("url-dep @ file:///tmp/url-dep",)
+
+
+def test_generate_constraints_retries_discovered_url_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Constraint generation should retry with uv-suggested URL requirements.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        monkeypatch: Pytest helper used to replace process execution.
+    """
+    calls: list[tuple[list[str], str]] = []
+
+    def fake_run(
+        command: list[str],
+        check: bool,
+        input: str,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        """Fail once with a URL suggestion, then write constraints."""
+        assert not check
+        assert capture_output
+        assert text
+        calls.append((command, input))
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                stdout="",
+                stderr=("Consider adding `url-dep @ file:///tmp/url-dep` to your dependencies or constraints file."),
+            )
+        output_file = tmp_path / "constraints.txt"
+        output_file.write_text("url-dep @ file:///tmp/url-dep\nurl-tool==1.0.0\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("module_manager.deploy.require_executable", lambda _name: "uv")
+    monkeypatch.setattr("module_manager.deploy.subprocess.run", fake_run)
+
+    result = generate_constraints(package="url-tool", output_file=tmp_path / "constraints.txt")
+
+    assert result.output_file == tmp_path / "constraints.txt"
+    assert result.requirements == ("url-tool", "url-dep @ file:///tmp/url-dep")
+    assert result.discovered_url_dependencies == ("url-dep @ file:///tmp/url-dep",)
+    assert result.iterations == 2
+    assert calls[0][1] == "url-tool\n"
+    assert calls[1][1] == "url-tool\nurl-dep @ file:///tmp/url-dep\n"
+    assert (tmp_path / "constraints.txt").read_text(encoding="utf-8") == (
+        "url-dep @ file:///tmp/url-dep\nurl-tool==1.0.0\n"
+    )
 
 
 def test_python_tool_install_command_accepts_url_dependency() -> None:
