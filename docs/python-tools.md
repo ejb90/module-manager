@@ -55,6 +55,21 @@ module-manager deploy-python gitconductor 0.1.0 \
 
 `--find-links` may be used more than once.
 
+## Use Constraint Files
+
+Pass requirement constraint files to `uv tool install`:
+
+```sh
+module-manager deploy-python gitconductor 0.1.0 \
+  --package gitconductor==0.1.0 \
+  --constraints /prod/constraints/runtime.txt \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+`--constraints` may be used more than once.
+
 ## Use a uv Config File
 
 Pass a specific uv configuration file to `uv tool install`:

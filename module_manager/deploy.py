@@ -68,6 +68,7 @@ class EnvironmentToolSpec:
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        constraints: Constraint requirement files passed to uv.
         description: Optional tool description.
         homepage: Optional upstream homepage.
     """
@@ -82,6 +83,7 @@ class EnvironmentToolSpec:
     python: str | None = None
     indexes: tuple[str, ...] = ()
     find_links: tuple[str, ...] = ()
+    constraints: tuple[str, ...] = ()
     description: str | None = None
     homepage: str | None = None
 
@@ -150,6 +152,7 @@ def uv_install_command(
     python: str | None = None,
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
+    constraints: tuple[str, ...] = (),
     uv_config_file: Path | None = None,
 ) -> list[str]:
     """Build the uv command used to install a Python CLI tool.
@@ -159,6 +162,7 @@ def uv_install_command(
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs.
         find_links: Wheelhouse directories or HTML package pages.
+        constraints: Constraint requirement files.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
 
     Returns:
@@ -174,6 +178,8 @@ def uv_install_command(
         command.extend(["--index", index])
     for link in find_links:
         command.extend(["--find-links", link])
+    for constraint in constraints:
+        command.extend(["--constraints", constraint])
     command.append(package)
     return command
 
@@ -400,6 +406,29 @@ def optional_manifest_path(data: dict[str, Any], key: str, base_dir: Path | None
     return path
 
 
+def optional_manifest_paths(data: dict[str, Any], key: str, base_dir: Path | None = None) -> tuple[Path, ...]:
+    """Read optional paths from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Optional path-list key.
+        base_dir: Directory used to resolve relative paths.
+
+    Returns:
+        Expanded path values, or an empty tuple.
+
+    Raises:
+        TypeError: If the value is not a list of strings.
+    """
+    paths = []
+    for value in optional_string_tuple(data, key):
+        path = Path(value).expanduser()
+        if base_dir and not path.is_absolute():
+            path = base_dir / path
+        paths.append(path)
+    return tuple(paths)
+
+
 def optional_string_tuple(data: dict[str, Any], key: str) -> tuple[str, ...]:
     """Read an optional list of strings from manifest data.
 
@@ -512,6 +541,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         python=optional_string(data, "python"),
         indexes=optional_string_tuple(data, "indexes"),
         find_links=optional_string_tuple(data, "find_links"),
+        constraints=tuple(str(path) for path in optional_manifest_paths(data, "constraints", base_dir)),
         description=optional_string(data, "description"),
         homepage=optional_string(data, "homepage"),
     )
@@ -570,6 +600,7 @@ def environment_actions(spec: EnvironmentSpec, paths: DeploymentPaths) -> tuple[
                 tool.python,
                 tool.indexes,
                 tool.find_links,
+                tool.constraints,
                 tool.uv_config_file,
             )
             actions.append(
@@ -628,6 +659,7 @@ def deploy_environment(
                     tool.python,
                     tool.indexes,
                     tool.find_links,
+                    tool.constraints,
                     tool.uv_config_file,
                 ),
                 check=True,
@@ -668,6 +700,7 @@ def deploy_python_tool(
     python: str | None = None,
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
+    constraints: tuple[str, ...] = (),
     uv_config_file: Path | None = None,
     execute_install: bool = False,
     make_default: bool = True,
@@ -685,6 +718,7 @@ def deploy_python_tool(
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        constraints: Constraint requirement files passed to uv.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         execute_install: Whether to run `uv tool install` immediately.
         make_default: Whether to make this version the module default.
@@ -700,7 +734,7 @@ def deploy_python_tool(
     paths = deployment_paths(module_root, prefix, name, version)
     paths.bin_dir.mkdir(parents=True, exist_ok=True)
     tool_dir = paths.install_root / "uv-tools"
-    command = uv_install_command(package, python, indexes, find_links, uv_config_file)
+    command = uv_install_command(package, python, indexes, find_links, constraints, uv_config_file)
 
     if execute_install:
         require_executable("uv")

@@ -22,6 +22,7 @@ package = "ruff==0.8.0"
 python = "3.12"
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
+constraints = ["/prod/constraints/runtime.txt"]
 uv_config_file = "/prod/config/uv.toml"
 
 [[tools]]
@@ -59,6 +60,7 @@ module load dev-tools
 ```
 
 Relative `binary` and `script` paths are resolved relative to the manifest file.
+Relative Python `constraints` paths are resolved the same way.
 
 ## Preview
 
