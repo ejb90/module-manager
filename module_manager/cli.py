@@ -200,6 +200,12 @@ def main(ctx: click.Context, config: Path | None) -> None:
     help="Directory or HTML page of packages passed to uv. May be used more than once.",
 )
 @click.option(
+    "--constraints",
+    "constraints",
+    multiple=True,
+    help="Requirements constraint file passed to uv. May be used more than once.",
+)
+@click.option(
     "--uv-config-file",
     type=PATH,
     help="uv.toml file passed to uv tool install with --config-file.",
@@ -223,6 +229,7 @@ def deploy_python(
     python: str | None,
     indexes: tuple[str, ...],
     find_links: tuple[str, ...],
+    constraints: tuple[str, ...],
     uv_config_file: Path | None,
     execute_install: bool,
 ) -> None:
@@ -241,6 +248,7 @@ def deploy_python(
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        constraints: Requirements constraint files passed to uv.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         execute_install: Whether to run `uv tool install` immediately.
 
@@ -265,6 +273,7 @@ def deploy_python(
         python=python,
         indexes=indexes or config.indexes,
         find_links=find_links or config.find_links,
+        constraints=constraints,
         uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
         execute_install=execute_install,
         make_default=make_default,

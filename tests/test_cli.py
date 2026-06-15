@@ -56,6 +56,8 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "https://packages.example/simple",
                 "--find-links",
                 "/prod/wheels",
+                "--constraints",
+                "/prod/constraints.txt",
                 "--uv-config-file",
                 "/prod/uv.toml",
             ],
@@ -66,6 +68,7 @@ def test_deploy_python_command_writes_modulefile() -> None:
     assert "modulefile: modules/ruff/0.8.0" in result.output
     assert "default version: modules/ruff/.version" in result.output
     assert "--config-file /prod/uv.toml" in modulefile
+    assert "--constraints /prod/constraints.txt" in modulefile
 
 
 def test_deploy_python_command_uses_config_defaults() -> None:
@@ -408,6 +411,7 @@ name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
 indexes = ["https://packages.example/simple"]
+constraints = ["constraints.txt"]
 """.strip(),
             encoding="utf-8",
         )
@@ -418,6 +422,7 @@ indexes = ["https://packages.example/simple"]
     assert "would create install root: tools/dev-tools/2026.05" in result.output
     assert "would install python ruff:" in result.output
     assert "--index https://packages.example/simple" in result.output
+    assert "--constraints constraints.txt" in result.output
     assert not install_root_exists
 
 

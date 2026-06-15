@@ -1,6 +1,7 @@
 """Modulefile rendering and deployment helper tests."""
 
 from pathlib import Path
+from shlex import quote as shlex_quote
 
 import pytest
 
@@ -84,6 +85,7 @@ def test_python_tool_install_command_accepts_indexes() -> None:
         "internal-tool==1.2.3",
         indexes=("https://packages.example/simple", "https://mirror.example/simple"),
         find_links=("/prod/wheels",),
+        constraints=("/prod/constraints.txt",),
     ) == [
         "uv",
         "tool",
@@ -94,6 +96,8 @@ def test_python_tool_install_command_accepts_indexes() -> None:
         "https://mirror.example/simple",
         "--find-links",
         "/prod/wheels",
+        "--constraints",
+        "/prod/constraints.txt",
         "internal-tool==1.2.3",
     ]
 
@@ -119,6 +123,20 @@ def test_python_tool_install_command_accepts_uv_config_file() -> None:
         "/prod/uv.toml",
         "install",
         "ruff==0.8.0",
+    ]
+
+
+def test_python_tool_install_command_accepts_url_dependency() -> None:
+    """Uv install commands should pass direct URL dependencies unchanged."""
+    package = "mytool @ https://packages.example/files/mytool-1.0.0-py3-none-any.whl"
+
+    assert uv_install_command(package, constraints=("/prod/constraints.txt",)) == [
+        "uv",
+        "tool",
+        "install",
+        "--constraints",
+        "/prod/constraints.txt",
+        package,
     ]
 
 
@@ -158,6 +176,7 @@ def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Pat
         prefix=tmp_path / "tools",
         indexes=("https://packages.example/simple",),
         find_links=("/prod/wheels",),
+        constraints=("/prod/constraints.txt",),
         uv_config_file=Path("/prod/uv.toml"),
     )
 
@@ -165,6 +184,28 @@ def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Pat
     assert "--config-file /prod/uv.toml" in modulefile
     assert "--index https://packages.example/simple" in modulefile
     assert "--find-links /prod/wheels" in modulefile
+    assert "--constraints /prod/constraints.txt" in modulefile
+
+
+def test_deploy_python_tool_writes_url_dependency_to_install_hint(tmp_path: Path) -> None:
+    """Generated module help should preserve direct URL package specs.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
+    package = "mytool @ https://packages.example/files/mytool-1.0.0-py3-none-any.whl"
+    paths = deploy_python_tool(
+        name="mytool",
+        version="1.0.0",
+        package=package,
+        module_root=tmp_path / "modules",
+        prefix=tmp_path / "tools",
+        constraints=("/prod/constraints.txt",),
+    )
+
+    modulefile = paths.modulefile.read_text(encoding="utf-8")
+    assert shlex_quote(package) in modulefile
+    assert "--constraints /prod/constraints.txt" in modulefile
 
 
 def test_require_executable_reports_missing_command(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -403,6 +444,7 @@ package = "ruff==0.8.0"
 python = "3.12"
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
+constraints = ["constraints.txt", "/prod/global-constraints.txt"]
 uv_config_file = "uv.toml"
 
 [[tools]]
@@ -422,6 +464,7 @@ script = "scripts/helper"
     assert not spec.make_default
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].indexes == ("https://packages.example/simple",)
+    assert spec.tools[0].constraints == (str(tmp_path / "constraints.txt"), "/prod/global-constraints.txt")
     assert spec.tools[0].uv_config_file == tmp_path / "uv.toml"
     assert spec.tools[1].script == tmp_path / "scripts/helper"
 
@@ -530,6 +573,7 @@ type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
 python = "3.12"
+constraints = ["constraints.txt"]
 uv_config_file = "uv.toml"
 """.strip(),
         encoding="utf-8",
@@ -550,6 +594,8 @@ uv_config_file = "uv.toml"
         "install",
         "--python",
         "3.12",
+        "--constraints",
+        str(tmp_path / "constraints.txt"),
         "ruff==0.8.0",
     ]
     assert calls[0][1]["UV_TOOL_DIR"] == str(result.paths.install_root / "uv-tools")

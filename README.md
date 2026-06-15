@@ -41,6 +41,7 @@ Deploy a Python CLI with `uv tool install`:
 ```sh
 module-manager deploy-python ruff 0.8.0 \
   --package 'ruff==0.8.0' \
+  --constraints /prod/constraints/runtime.txt \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
   --execute-install
