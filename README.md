@@ -56,6 +56,12 @@ module-manager deploy-rust ripgrep 14.1.1 \
   --module-root /prod/modulefiles
 ```
 
+Generate a constraints file for a Python CLI:
+
+```sh
+module-manager auto-constraints ruff==0.8.0 --output constraints.txt
+```
+
 Deploy a shell script:
 
 ```sh

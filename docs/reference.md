@@ -30,6 +30,12 @@ Show collective environment deployment options:
 module-manager deploy-env --help
 ```
 
+Show constraint generation options:
+
+```sh
+module-manager auto-constraints --help
+```
+
 Show uninstall options:
 
 ```sh
@@ -50,6 +56,17 @@ module-manager deploy-python NAME VERSION \
   [--module-root PATH] \
   [--no-default] \
   [--execute-install]
+```
+
+## Auto-Constraints Command
+
+```sh
+module-manager auto-constraints PACKAGE \
+  [--output PATH] \
+  [--python PYTHON] \
+  [--index URL] \
+  [--find-links PATH_OR_URL] \
+  [--uv-config-file PATH]
 ```
 
 ## Rust Command

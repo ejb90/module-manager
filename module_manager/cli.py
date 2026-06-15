@@ -12,12 +12,14 @@ from click import Command
 from . import __version__
 from .config import AppConfig, load_config
 from .deploy import (
+    ConstraintGenerationError,
     EnvironmentDeploymentResult,
     UninstallResult,
     deploy_environment,
     deploy_python_tool,
     deploy_rust_tool,
     deploy_script_tool,
+    generate_constraints,
     load_environment_spec,
     uninstall_tool,
 )
@@ -41,6 +43,7 @@ TOP_LEVEL_EXAMPLES = (
     "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
     "[cyan]module-manager deploy-script my-tool 1.0.0 --script ./scripts/my-tool "
     "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
+    "[cyan]module-manager auto-constraints ruff==0.8.0 --output constraints.txt[/cyan]\n\n"
     "[cyan]module-manager deploy-env --file dev-tools.toml[/cyan]\n\n"
     "[cyan]module-manager uninstall ruff 0.8.0 --prefix /prod/tools --module-root /prod/modulefiles[/cyan]"
 )
@@ -74,6 +77,13 @@ DEPLOY_ENV_EXAMPLES = (
     "[cyan]module-manager deploy-env --file dev-tools.toml[/cyan]\n\n"
     "[cyan]module-manager deploy-env --file dev-tools.toml --prefix /scratch/tools "
     "--module-root /scratch/modulefiles --dry-run[/cyan]"
+)
+
+AUTO_CONSTRAINTS_EXAMPLES = (
+    "Examples:\n\n"
+    "[cyan]module-manager auto-constraints gitconductor==0.7.0[/cyan]\n\n"
+    "[cyan]module-manager auto-constraints internal-tool==1.2.3 --index https://packages.example/simple "
+    "--output /prod/constraints/internal-tool.txt[/cyan]"
 )
 
 UNINSTALL_EXAMPLES = (
@@ -281,6 +291,82 @@ def deploy_python(
     print_result(
         paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
     )
+
+
+@main.command(
+    "auto-constraints",
+    help="Generate constraints for a Python package with uv.",
+    epilog=AUTO_CONSTRAINTS_EXAMPLES,
+)
+@click.argument("package")
+@click.option(
+    "--output",
+    "output_file",
+    type=PATH,
+    default=Path("constraints.txt"),
+    show_default=True,
+    help="Constraints file to write.",
+)
+@click.option("--python", "python", help="Python interpreter/version passed to uv.")
+@click.option(
+    "--index",
+    "indexes",
+    multiple=True,
+    help="Additional package index URL passed to uv. May be used more than once.",
+)
+@click.option(
+    "--find-links",
+    "find_links",
+    multiple=True,
+    help="Directory or HTML page of packages passed to uv. May be used more than once.",
+)
+@click.option(
+    "--uv-config-file",
+    type=PATH,
+    help="uv.toml file passed to uv with --config-file.",
+)
+@click.pass_obj
+def auto_constraints(
+    config: AppConfig,
+    package: str,
+    output_file: Path,
+    python: str | None,
+    indexes: tuple[str, ...],
+    find_links: tuple[str, ...],
+    uv_config_file: Path | None,
+) -> None:
+    """Generate a constraints file for a Python package.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        package: Package requirement to compile.
+        output_file: Constraints file to write.
+        python: Optional Python interpreter or version passed to uv.
+        indexes: Additional package index URLs passed to uv.
+        find_links: Wheelhouse directories or HTML package pages passed to uv.
+        uv_config_file: Optional uv configuration file passed to uv.
+
+    Raises:
+        click.ClickException: If uv cannot generate constraints.
+        MissingExecutableError: If uv is not on `PATH`.
+    """
+    try:
+        result = generate_constraints(
+            package=package,
+            output_file=output_file.expanduser(),
+            python=python,
+            indexes=indexes or config.indexes,
+            find_links=find_links or config.find_links,
+            uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
+        )
+    except ConstraintGenerationError as error:
+        raise click.ClickException(str(error)) from error
+
+    click.echo(f"constraints: {result.output_file}")
+    if result.discovered_url_dependencies:
+        click.echo(f"discovered URL dependencies: {len(result.discovered_url_dependencies)}")
+        for requirement in result.discovered_url_dependencies:
+            click.echo(f"  {requirement}")
 
 
 @main.command(

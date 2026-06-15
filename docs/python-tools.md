@@ -70,6 +70,22 @@ module-manager deploy-python gitconductor 0.1.0 \
 
 `--constraints` may be used more than once.
 
+## Generate Constraint Files
+
+Use `auto-constraints` to compile a package and its dependencies into a
+constraints file:
+
+```sh
+module-manager auto-constraints gitconductor==0.7.0 \
+  --index https://packages.example/simple \
+  --output constraints.txt
+```
+
+The command runs `uv pip compile` and writes `constraints.txt` by default. If uv
+reports a transitive URL dependency, `module-manager` adds the suggested
+`name @ URL` requirement and retries until all URL dependencies have been
+included or uv reports an unrecoverable error.
+
 ## Use a uv Config File
 
 Pass a specific uv configuration file to `uv tool install`:

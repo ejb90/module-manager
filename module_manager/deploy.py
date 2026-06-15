@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -18,6 +19,10 @@ from .modulefile import ModuleSpec, is_default_version, render_default_version, 
 
 class MissingExecutableError(RuntimeError):
     """Raised when a required external executable is unavailable."""
+
+
+class ConstraintGenerationError(RuntimeError):
+    """Raised when uv cannot generate constraints after URL discovery."""
 
 
 @dataclass(frozen=True)
@@ -126,6 +131,26 @@ class EnvironmentDeploymentResult:
     actions: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ConstraintGenerationResult:
+    """Result of generating a Python constraints file.
+
+    Attributes:
+        output_file: Constraints file written by uv.
+        requirements: Initial and discovered direct requirements compiled.
+        discovered_url_dependencies: URL requirements discovered from uv errors.
+        iterations: Number of uv compile attempts.
+    """
+
+    output_file: Path
+    requirements: tuple[str, ...]
+    discovered_url_dependencies: tuple[str, ...]
+    iterations: int
+
+
+URL_DEPENDENCY_RE = re.compile(r"`([^`]+?\s@\s[^`]+?)`")
+
+
 def deployment_paths(module_root: Path, prefix: Path, name: str, version: str) -> DeploymentPaths:
     """Compute versioned installation and modulefile paths for a tool.
 
@@ -182,6 +207,129 @@ def uv_install_command(
         command.extend(["--constraints", constraint])
     command.append(package)
     return command
+
+
+def uv_compile_command(
+    output_file: Path,
+    python: str | None = None,
+    indexes: tuple[str, ...] = (),
+    find_links: tuple[str, ...] = (),
+    uv_config_file: Path | None = None,
+) -> list[str]:
+    """Build the uv command used to compile Python constraints.
+
+    Args:
+        output_file: Destination constraints file.
+        python: Optional Python interpreter or version passed to uv.
+        indexes: Additional package index URLs.
+        find_links: Wheelhouse directories or HTML package pages.
+        uv_config_file: Optional uv configuration file passed to `uv`.
+
+    Returns:
+        Tokenized uv command suitable for `subprocess.run`.
+    """
+    command = ["uv"]
+    if uv_config_file:
+        command.extend(["--config-file", str(uv_config_file)])
+    command.extend(
+        [
+            "pip",
+            "compile",
+            "-",
+            "--output-file",
+            str(output_file),
+            "--no-header",
+            "--no-annotate",
+        ]
+    )
+    if python:
+        command.extend(["--python", python])
+    for index in indexes:
+        command.extend(["--index", index])
+    for link in find_links:
+        command.extend(["--find-links", link])
+    return command
+
+
+def discover_url_requirements(output: str) -> tuple[str, ...]:
+    """Extract uv-suggested direct URL requirements from compiler output.
+
+    Args:
+        output: Combined stdout and stderr from `uv pip compile`.
+
+    Returns:
+        Direct URL requirements in discovery order.
+    """
+    requirements: list[str] = []
+    for match in URL_DEPENDENCY_RE.findall(output):
+        if match not in requirements:
+            requirements.append(match)
+    return tuple(requirements)
+
+
+def generate_constraints(
+    *,
+    package: str,
+    output_file: Path,
+    python: str | None = None,
+    indexes: tuple[str, ...] = (),
+    find_links: tuple[str, ...] = (),
+    uv_config_file: Path | None = None,
+    max_iterations: int = 20,
+) -> ConstraintGenerationResult:
+    """Generate a constraints file, discovering transitive URL dependencies.
+
+    Args:
+        package: Initial package requirement to compile.
+        output_file: Destination constraints file.
+        python: Optional Python interpreter or version passed to uv.
+        indexes: Additional package index URLs passed to uv.
+        find_links: Wheelhouse directories or HTML package pages passed to uv.
+        uv_config_file: Optional uv configuration file passed to `uv`.
+        max_iterations: Maximum uv compile attempts before failing.
+
+    Returns:
+        Constraints generation result.
+
+    Raises:
+        MissingExecutableError: If uv is not on `PATH`.
+        ConstraintGenerationError: If uv fails without a new URL dependency to
+            add, or if the iteration limit is reached.
+    """
+    require_executable("uv")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    requirements = [package]
+    discovered: list[str] = []
+    command = uv_compile_command(output_file, python, indexes, find_links, uv_config_file)
+
+    for iteration in range(1, max_iterations + 1):
+        completed = subprocess.run(
+            command,
+            check=False,
+            input="\n".join(requirements) + "\n",
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode == 0:
+            return ConstraintGenerationResult(
+                output_file=output_file,
+                requirements=tuple(requirements),
+                discovered_url_dependencies=tuple(discovered),
+                iterations=iteration,
+            )
+
+        combined_output = f"{completed.stdout}\n{completed.stderr}"
+        new_requirements = [
+            requirement for requirement in discover_url_requirements(combined_output) if requirement not in requirements
+        ]
+        if not new_requirements:
+            msg = combined_output.strip() or f"uv pip compile failed with exit code {completed.returncode}"
+            raise ConstraintGenerationError(msg)
+        requirements.extend(new_requirements)
+        discovered.extend(new_requirements)
+
+    msg = f"uv pip compile did not converge after {max_iterations} attempts"
+    raise ConstraintGenerationError(msg)
 
 
 def uv_install_environment(tool_dir: Path, bin_dir: Path) -> dict[str, str]:
