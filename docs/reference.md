@@ -61,6 +61,7 @@ module-manager deploy-python NAME VERSION \
   [--force] \
   [--reinstall] \
   [--uv-config-file PATH] \
+  [--uv-executable PATH] \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
@@ -75,7 +76,8 @@ module-manager auto-constraints PACKAGE \
   [--python PYTHON] \
   [--index URL] \
   [--find-links PATH_OR_URL] \
-  [--uv-config-file PATH]
+  [--uv-config-file PATH] \
+  [--uv-executable PATH]
 ```
 
 ## Rust Command
@@ -86,6 +88,7 @@ module-manager deploy-rust NAME VERSION \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
+  [--uv-executable PATH] \
   [--dry-run]
 ```
 

@@ -23,6 +23,7 @@ module_root = "/scratch/modules"
 indexes = ["https://packages.example/simple"]
 find_links = ["/scratch/wheels"]
 uv_config_file = "/scratch/uv.toml"
+uv_executable = "/scratch/bin/uv"
 """.strip(),
         encoding="utf-8",
     )
@@ -33,6 +34,7 @@ uv_config_file = "/scratch/uv.toml"
         indexes=("https://packages.example/simple",),
         find_links=("/scratch/wheels",),
         uv_config_file=Path("/scratch/uv.toml"),
+        uv_executable=Path("/scratch/bin/uv"),
     )
 
 
@@ -55,10 +57,12 @@ module_root = "/config/modules"
     monkeypatch.setenv("MODULE_MANAGER_MODULE_ROOT", "/env/modules")
     monkeypatch.setenv("MODULE_MANAGER_INDEXES", "https://one.example/simple,https://two.example/simple")
     monkeypatch.setenv("MODULE_MANAGER_FIND_LINKS", "/env/wheels,/env/more-wheels")
+    monkeypatch.setenv("MODULE_MANAGER_UV_EXECUTABLE", "/env/bin/uv")
 
     assert load_config(config_path) == AppConfig(
         prefix=Path("/env/tools"),
         module_root=Path("/env/modules"),
         indexes=("https://one.example/simple", "https://two.example/simple"),
         find_links=("/env/wheels", "/env/more-wheels"),
+        uv_executable=Path("/env/bin/uv"),
     )

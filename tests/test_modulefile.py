@@ -152,6 +152,16 @@ def test_python_tool_install_command_accepts_uv_config_file() -> None:
     ]
 
 
+def test_python_tool_install_command_accepts_uv_executable() -> None:
+    """Uv install commands should use a requested uv executable path."""
+    assert uv_install_command("ruff==0.8.0", uv_executable=Path("/opt/uv/bin/uv")) == [
+        "/opt/uv/bin/uv",
+        "tool",
+        "install",
+        "ruff==0.8.0",
+    ]
+
+
 def test_uv_compile_command_accepts_sources_and_config() -> None:
     """Uv compile commands should include resolver and config options."""
     assert uv_compile_command(
@@ -160,8 +170,9 @@ def test_uv_compile_command_accepts_sources_and_config() -> None:
         indexes=("https://packages.example/simple",),
         find_links=("/prod/wheels",),
         uv_config_file=Path("/prod/uv.toml"),
+        uv_executable=Path("/opt/uv/bin/uv"),
     ) == [
-        "uv",
+        "/opt/uv/bin/uv",
         "--config-file",
         "/prod/uv.toml",
         "pip",
@@ -580,6 +591,7 @@ refresh_packages = ["ruff"]
 force = true
 reinstall = true
 uv_config_file = "uv.toml"
+uv_executable = "bin/uv"
 
 [[tools]]
 type = "script"
@@ -609,6 +621,7 @@ script = "scripts/helper"
     assert spec.tools[0].force
     assert spec.tools[0].reinstall
     assert spec.tools[0].uv_config_file == tmp_path / "uv.toml"
+    assert spec.tools[0].uv_executable == tmp_path / "bin/uv"
     assert spec.tools[1].script == tmp_path / "scripts/helper"
 
 
@@ -697,13 +710,19 @@ def test_deploy_environment_installs_python_tool(tmp_path: Path, monkeypatch: py
         monkeypatch: Pytest helper used to replace process execution.
     """
     calls: list[tuple[list[str], dict[str, str]]] = []
+    executable_checks: list[str] = []
 
     def fake_run(command: list[str], check: bool, env: dict[str, str]) -> None:
         """Record the subprocess call made by deployment."""
         assert check
         calls.append((command, env))
 
-    monkeypatch.setattr("module_manager.deploy.require_executable", lambda _name: "uv")
+    def fake_require_executable(name: str) -> str:
+        """Record executable availability checks."""
+        executable_checks.append(name)
+        return name
+
+    monkeypatch.setattr("module_manager.deploy.require_executable", fake_require_executable)
     monkeypatch.setattr("module_manager.deploy.subprocess.run", fake_run)
     manifest = tmp_path / "env.toml"
     manifest.write_text(
@@ -733,10 +752,11 @@ uv_config_file = "uv.toml"
         spec=spec,
         module_root=tmp_path / "modules",
         prefix=tmp_path / "tools",
+        uv_executable=tmp_path / "custom-uv",
     )
 
     assert calls[0][0] == [
-        "uv",
+        str(tmp_path / "custom-uv"),
         "tool",
         "--config-file",
         str(tmp_path / "uv.toml"),
@@ -755,6 +775,7 @@ uv_config_file = "uv.toml"
         "--force",
         "ruff==0.8.0",
     ]
+    assert executable_checks == [str(tmp_path / "custom-uv")]
     assert calls[0][1]["UV_TOOL_DIR"] == str(result.paths.install_root / "uv-tools")
     assert calls[0][1]["UV_TOOL_BIN_DIR"] == str(result.paths.bin_dir)
     assert result.paths.modulefile.exists()

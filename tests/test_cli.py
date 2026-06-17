@@ -75,6 +75,8 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "--reinstall",
                 "--uv-config-file",
                 "/prod/uv.toml",
+                "--uv-executable",
+                "/opt/uv/bin/uv",
             ],
         )
         modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
@@ -83,6 +85,7 @@ def test_deploy_python_command_writes_modulefile() -> None:
     assert "modulefile: modules/ruff/0.8.0" in result.output
     assert "default version: modules/ruff/.version" in result.output
     assert "--config-file /prod/uv.toml" in modulefile
+    assert "/opt/uv/bin/uv tool --config-file /prod/uv.toml install" in modulefile
     assert "--default-index https://default.example/simple" in modulefile
     assert "--no-index" in modulefile
     assert "--index-strategy unsafe-first-match" in modulefile
@@ -110,6 +113,7 @@ module_root = "modules"
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
 uv_config_file = "uv.toml"
+uv_executable = "bin/uv"
 """.strip(),
             encoding="utf-8",
         )
@@ -130,6 +134,7 @@ uv_config_file = "uv.toml"
     assert result.exit_code == 0
     assert "modulefile: modules/ruff/0.8.0" in result.output
     assert "--config-file uv.toml" in modulefile
+    assert "bin/uv tool --config-file uv.toml install" in modulefile
 
 
 def test_deploy_command_rejects_matching_prefix_and_module_root() -> None:
@@ -202,6 +207,7 @@ def test_auto_constraints_command_writes_output(monkeypatch: pytest.MonkeyPatch)
             "indexes": ("https://packages.example/simple",),
             "find_links": (),
             "uv_config_file": None,
+            "uv_executable": None,
         }
     ]
     assert "constraints: constraints.txt" in result.output
@@ -492,6 +498,7 @@ no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
 force = true
+uv_executable = "bin/uv"
 """.strip(),
             encoding="utf-8",
         )
@@ -509,6 +516,7 @@ force = true
     assert "--refresh" in result.output
     assert "--refresh-package ruff" in result.output
     assert "--force" in result.output
+    assert "bin/uv tool install" in result.output
     assert not install_root_exists
 
 
