@@ -75,7 +75,11 @@ module-manager auto-constraints PACKAGE \
   [--output PATH] \
   [--python PYTHON] \
   [--index URL] \
+  [--default-index URL] \
   [--find-links PATH_OR_URL] \
+  [--no-index] \
+  [--index-strategy STRATEGY] \
+  [--keyring-provider PROVIDER] \
   [--uv-config-file PATH] \
   [--uv-executable PATH]
 ```
@@ -88,7 +92,6 @@ module-manager deploy-rust NAME VERSION \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
-  [--uv-executable PATH] \
   [--dry-run]
 ```
 

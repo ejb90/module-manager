@@ -8,11 +8,10 @@ import shlex
 import shutil
 import stat
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import tomllib
 
 from .modulefile import ModuleSpec, is_default_version, render_default_version, render_modulefile
 
@@ -23,6 +22,10 @@ class MissingExecutableError(RuntimeError):
 
 class ConstraintGenerationError(RuntimeError):
     """Raised when uv cannot generate constraints after URL discovery."""
+
+
+VALID_INDEX_STRATEGIES = ("first-index", "unsafe-first-match", "unsafe-best-match")
+VALID_KEYRING_PROVIDERS = ("disabled", "subprocess")
 
 
 @dataclass(frozen=True)
@@ -271,7 +274,11 @@ def uv_compile_command(
     output_file: Path,
     python: str | None = None,
     indexes: tuple[str, ...] = (),
+    default_index: str | None = None,
     find_links: tuple[str, ...] = (),
+    no_index: bool = False,
+    index_strategy: str | None = None,
+    keyring_provider: str | None = None,
     uv_config_file: Path | None = None,
     uv_executable: Path | None = None,
 ) -> list[str]:
@@ -281,7 +288,11 @@ def uv_compile_command(
         output_file: Destination constraints file.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs.
+        default_index: Default package index URL.
         find_links: Wheelhouse directories or HTML package pages.
+        no_index: Whether to ignore registry indexes.
+        index_strategy: Package index strategy.
+        keyring_provider: Keyring provider.
         uv_config_file: Optional uv configuration file passed to `uv`.
         uv_executable: Optional uv executable path.
 
@@ -306,8 +317,16 @@ def uv_compile_command(
         command.extend(["--python", python])
     for index in indexes:
         command.extend(["--index", index])
+    if default_index:
+        command.extend(["--default-index", default_index])
     for link in find_links:
         command.extend(["--find-links", link])
+    if no_index:
+        command.append("--no-index")
+    if index_strategy:
+        command.extend(["--index-strategy", index_strategy])
+    if keyring_provider:
+        command.extend(["--keyring-provider", keyring_provider])
     return command
 
 
@@ -333,7 +352,11 @@ def generate_constraints(
     output_file: Path,
     python: str | None = None,
     indexes: tuple[str, ...] = (),
+    default_index: str | None = None,
     find_links: tuple[str, ...] = (),
+    no_index: bool = False,
+    index_strategy: str | None = None,
+    keyring_provider: str | None = None,
     uv_config_file: Path | None = None,
     uv_executable: Path | None = None,
     max_iterations: int = 20,
@@ -345,7 +368,11 @@ def generate_constraints(
         output_file: Destination constraints file.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
+        default_index: Default package index URL passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        no_index: Whether uv should ignore registry indexes.
+        index_strategy: Package index strategy passed to uv.
+        keyring_provider: Keyring provider passed to uv.
         uv_config_file: Optional uv configuration file passed to `uv`.
         uv_executable: Optional uv executable path.
         max_iterations: Maximum uv compile attempts before failing.
@@ -362,7 +389,18 @@ def generate_constraints(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     requirements = [package]
     discovered: list[str] = []
-    command = uv_compile_command(output_file, python, indexes, find_links, uv_config_file, uv_executable)
+    command = uv_compile_command(
+        output_file,
+        python,
+        indexes,
+        default_index,
+        find_links,
+        no_index,
+        index_strategy,
+        keyring_provider,
+        uv_config_file,
+        uv_executable,
+    )
 
     for iteration in range(1, max_iterations + 1):
         completed = subprocess.run(
@@ -500,6 +538,20 @@ def remove_path(path: Path) -> bool:
         shutil.rmtree(path)
         return True
     return False
+
+
+def rollback_deployment(paths: DeploymentPaths, install_root_existed: bool, modulefile_existed: bool) -> None:
+    """Remove paths created by a failed deployment attempt.
+
+    Args:
+        paths: Deployment paths targeted by the failed operation.
+        install_root_existed: Whether the install root predated the attempt.
+        modulefile_existed: Whether the modulefile predated the attempt.
+    """
+    if not modulefile_existed:
+        remove_path(paths.modulefile)
+    if not install_root_existed:
+        remove_path(paths.install_root)
 
 
 def uninstall_tool(
@@ -783,6 +835,12 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
         if not tool.package:
             msg = f"tools[{index}].package is required for python tools"
             raise TypeError(msg)
+        if tool.index_strategy and tool.index_strategy not in VALID_INDEX_STRATEGIES:
+            msg = f"tools[{index}].index_strategy must be one of: {', '.join(VALID_INDEX_STRATEGIES)}"
+            raise TypeError(msg)
+        if tool.keyring_provider and tool.keyring_provider not in VALID_KEYRING_PROVIDERS:
+            msg = f"tools[{index}].keyring_provider must be one of: {', '.join(VALID_KEYRING_PROVIDERS)}"
+            raise TypeError(msg)
         return
     if tool.tool_type == "rust":
         if not tool.binary:
@@ -885,54 +943,60 @@ def deploy_environment(
     if dry_run:
         return EnvironmentDeploymentResult(paths=paths, actions=actions)
 
-    paths.bin_dir.mkdir(parents=True, exist_ok=True)
-    tool_dir = paths.install_root / "uv-tools"
-    for tool in spec.tools:
-        if tool.tool_type == "python" and tool.package:
-            resolved_uv_executable = tool.uv_executable or uv_executable
-            require_executable(str(resolved_uv_executable or "uv"))
-            subprocess.run(
-                uv_install_command(
-                    tool.package,
-                    tool.python,
-                    tool.indexes,
-                    tool.default_index,
-                    tool.find_links,
-                    tool.no_index,
-                    tool.index_strategy,
-                    tool.keyring_provider,
-                    tool.constraints,
-                    tool.no_cache,
-                    tool.refresh,
-                    tool.refresh_packages,
-                    tool.force,
-                    tool.reinstall,
-                    tool.uv_config_file,
-                    resolved_uv_executable,
-                ),
-                check=True,
-                env=uv_install_environment(tool_dir, paths.bin_dir),
-            )
-        elif tool.tool_type == "rust" and tool.binary:
-            copy_executable(tool.binary, paths.bin_dir / tool.name)
-        elif tool.tool_type == "script" and tool.script:
-            copy_executable(tool.script, paths.bin_dir / tool.name)
+    install_root_existed = paths.install_root.exists()
+    modulefile_existed = paths.modulefile.exists()
+    try:
+        paths.bin_dir.mkdir(parents=True, exist_ok=True)
+        tool_dir = paths.install_root / "uv-tools"
+        for tool in spec.tools:
+            if tool.tool_type == "python" and tool.package:
+                resolved_uv_executable = tool.uv_executable or uv_executable
+                require_executable(str(resolved_uv_executable or "uv"))
+                subprocess.run(
+                    uv_install_command(
+                        tool.package,
+                        tool.python,
+                        tool.indexes,
+                        tool.default_index,
+                        tool.find_links,
+                        tool.no_index,
+                        tool.index_strategy,
+                        tool.keyring_provider,
+                        tool.constraints,
+                        tool.no_cache,
+                        tool.refresh,
+                        tool.refresh_packages,
+                        tool.force,
+                        tool.reinstall,
+                        tool.uv_config_file,
+                        resolved_uv_executable,
+                    ),
+                    check=True,
+                    env=uv_install_environment(tool_dir, paths.bin_dir),
+                )
+            elif tool.tool_type == "rust" and tool.binary:
+                copy_executable(tool.binary, paths.bin_dir / tool.name)
+            elif tool.tool_type == "script" and tool.script:
+                copy_executable(tool.script, paths.bin_dir / tool.name)
 
-    tool_names = ", ".join(tool.name for tool in spec.tools)
-    install_hint = f"collective environment containing: {tool_names}"
-    modulefile = render_modulefile(
-        ModuleSpec(
-            name=spec.name,
-            version=spec.version,
-            root=paths.install_root,
-            bin_dir=paths.bin_dir,
-            description=spec.description,
-            homepage=spec.homepage,
-            install_hint=install_hint,
+        tool_names = ", ".join(tool.name for tool in spec.tools)
+        install_hint = f"collective environment containing: {tool_names}"
+        modulefile = render_modulefile(
+            ModuleSpec(
+                name=spec.name,
+                version=spec.version,
+                root=paths.install_root,
+                bin_dir=paths.bin_dir,
+                description=spec.description,
+                homepage=spec.homepage,
+                install_hint=install_hint,
+            )
         )
-    )
-    write_text(paths.modulefile, modulefile)
-    write_default_version(paths, spec.version, spec.make_default)
+        write_text(paths.modulefile, modulefile)
+        write_default_version(paths, spec.version, spec.make_default)
+    except Exception:
+        rollback_deployment(paths, install_root_existed, modulefile_existed)
+        raise
     return EnvironmentDeploymentResult(paths=paths, actions=actions)
 
 
@@ -1000,49 +1064,55 @@ def deploy_python_tool(
         subprocess.CalledProcessError: If `uv tool install` fails.
     """
     paths = deployment_paths(module_root, prefix, name, version)
-    paths.bin_dir.mkdir(parents=True, exist_ok=True)
-    tool_dir = paths.install_root / "uv-tools"
-    command = uv_install_command(
-        package,
-        python,
-        indexes,
-        default_index,
-        find_links,
-        no_index,
-        index_strategy,
-        keyring_provider,
-        constraints,
-        no_cache,
-        refresh,
-        refresh_packages,
-        force,
-        reinstall,
-        uv_config_file,
-        uv_executable,
-    )
-
-    if execute_install:
-        require_executable(str(uv_executable or "uv"))
-        subprocess.run(command, check=True, env=uv_install_environment(tool_dir, paths.bin_dir))
-
-    install_hint = (
-        f"UV_TOOL_DIR={shlex.quote(str(tool_dir))} "
-        f"UV_TOOL_BIN_DIR={shlex.quote(str(paths.bin_dir))} "
-        f"{shlex.join(command)}"
-    )
-    modulefile = render_modulefile(
-        ModuleSpec(
-            name=name,
-            version=version,
-            root=paths.install_root,
-            bin_dir=paths.bin_dir,
-            description=description,
-            homepage=homepage,
-            install_hint=install_hint,
+    install_root_existed = paths.install_root.exists()
+    modulefile_existed = paths.modulefile.exists()
+    try:
+        paths.bin_dir.mkdir(parents=True, exist_ok=True)
+        tool_dir = paths.install_root / "uv-tools"
+        command = uv_install_command(
+            package,
+            python,
+            indexes,
+            default_index,
+            find_links,
+            no_index,
+            index_strategy,
+            keyring_provider,
+            constraints,
+            no_cache,
+            refresh,
+            refresh_packages,
+            force,
+            reinstall,
+            uv_config_file,
+            uv_executable,
         )
-    )
-    write_text(paths.modulefile, modulefile)
-    write_default_version(paths, version, make_default)
+
+        if execute_install:
+            require_executable(str(uv_executable or "uv"))
+            subprocess.run(command, check=True, env=uv_install_environment(tool_dir, paths.bin_dir))
+
+        install_hint = (
+            f"UV_TOOL_DIR={shlex.quote(str(tool_dir))} "
+            f"UV_TOOL_BIN_DIR={shlex.quote(str(paths.bin_dir))} "
+            f"{shlex.join(command)}"
+        )
+        modulefile = render_modulefile(
+            ModuleSpec(
+                name=name,
+                version=version,
+                root=paths.install_root,
+                bin_dir=paths.bin_dir,
+                description=description,
+                homepage=homepage,
+                install_hint=install_hint,
+            )
+        )
+        write_text(paths.modulefile, modulefile)
+        write_default_version(paths, version, make_default)
+    except Exception:
+        rollback_deployment(paths, install_root_existed, modulefile_existed)
+        raise
     return paths
 
 
@@ -1075,28 +1145,78 @@ def deploy_rust_tool(
     Returns:
         Paths created or targeted by the deployment.
     """
+    return deploy_copied_tool(
+        name=name,
+        version=version,
+        module_root=module_root,
+        prefix=prefix,
+        source=binary,
+        description=description,
+        homepage=homepage,
+        make_default=make_default,
+        dry_run=dry_run,
+        install_label="binary",
+    )
+
+
+def deploy_copied_tool(
+    *,
+    name: str,
+    version: str,
+    module_root: Path,
+    prefix: Path,
+    source: Path | None,
+    description: str | None,
+    homepage: str | None,
+    make_default: bool,
+    dry_run: bool,
+    install_label: str,
+) -> DeploymentPaths:
+    """Deploy metadata for a file copied into a versioned `bin` directory.
+
+    Args:
+        name: Tool name used in install and module paths.
+        version: Tool version used in install and module paths.
+        module_root: Root of the environment module tree.
+        prefix: Root installation prefix for deployed tools.
+        source: Optional file to copy into the deployed `bin` directory.
+        description: Optional module help and `module-whatis` text.
+        homepage: Optional upstream homepage shown in module help.
+        make_default: Whether to make this version the module default.
+        dry_run: Whether to report paths without mutating the filesystem.
+        install_label: Human-readable copied file type for module help.
+
+    Returns:
+        Paths created or targeted by the deployment.
+    """
     paths = deployment_paths(module_root, prefix, name, version)
     if dry_run:
         return paths
 
-    if binary:
-        copy_executable(binary, paths.bin_dir / name)
-    else:
-        paths.bin_dir.mkdir(parents=True, exist_ok=True)
+    install_root_existed = paths.install_root.exists()
+    modulefile_existed = paths.modulefile.exists()
+    try:
+        if source:
+            copy_executable(source, paths.bin_dir / name)
+        else:
+            paths.bin_dir.mkdir(parents=True, exist_ok=True)
 
-    modulefile = render_modulefile(
-        ModuleSpec(
-            name=name,
-            version=version,
-            root=paths.install_root,
-            bin_dir=paths.bin_dir,
-            description=description,
-            homepage=homepage,
-            install_hint=f"copy binary to {paths.bin_dir / name}",
+        modulefile = render_modulefile(
+            ModuleSpec(
+                name=name,
+                version=version,
+                root=paths.install_root,
+                bin_dir=paths.bin_dir,
+                description=description,
+                homepage=homepage,
+                install_hint=f"copy {install_label} to {paths.bin_dir / name}",
+            )
         )
-    )
-    write_text(paths.modulefile, modulefile)
-    write_default_version(paths, version, make_default)
+        write_text(paths.modulefile, modulefile)
+        write_default_version(paths, version, make_default)
+    except Exception:
+        rollback_deployment(paths, install_root_existed, modulefile_existed)
+        raise
     return paths
 
 
@@ -1128,26 +1248,15 @@ def deploy_script_tool(
     Returns:
         Paths created or targeted by the deployment.
     """
-    paths = deployment_paths(module_root, prefix, name, version)
-    if dry_run:
-        return paths
-
-    if script:
-        copy_executable(script, paths.bin_dir / name)
-    else:
-        paths.bin_dir.mkdir(parents=True, exist_ok=True)
-
-    modulefile = render_modulefile(
-        ModuleSpec(
-            name=name,
-            version=version,
-            root=paths.install_root,
-            bin_dir=paths.bin_dir,
-            description=description,
-            homepage=homepage,
-            install_hint=f"copy script to {paths.bin_dir / name}",
-        )
+    return deploy_copied_tool(
+        name=name,
+        version=version,
+        module_root=module_root,
+        prefix=prefix,
+        source=script,
+        description=description,
+        homepage=homepage,
+        make_default=make_default,
+        dry_run=dry_run,
+        install_label="script",
     )
-    write_text(paths.modulefile, modulefile)
-    write_default_version(paths, version, make_default)
-    return paths

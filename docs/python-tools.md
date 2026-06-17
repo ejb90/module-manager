@@ -162,6 +162,10 @@ reports a transitive URL dependency, `module-manager` adds the suggested
 `name @ URL` requirement and retries until all URL dependencies have been
 included or uv reports an unrecoverable error.
 
+`auto-constraints` accepts the same resolver source and credential options as
+`deploy-python`, including `--default-index`, `--no-index`, `--index-strategy`,
+and `--keyring-provider`.
+
 ## Use a uv Config File
 
 Pass a specific uv configuration file to `uv tool install`:
