@@ -243,6 +243,11 @@ def main(ctx: click.Context, config: Path | None) -> None:
     help="uv.toml file passed to uv tool install with --config-file.",
 )
 @click.option(
+    "--uv-executable",
+    type=PATH,
+    help="uv executable path. Defaults to uv on PATH.",
+)
+@click.option(
     "--execute-install",
     is_flag=True,
     help="Run uv tool install before writing the modulefile.",
@@ -272,6 +277,7 @@ def deploy_python(
     force: bool,
     reinstall: bool,
     uv_config_file: Path | None,
+    uv_executable: Path | None,
     execute_install: bool,
 ) -> None:
     """Write a modulefile for a [cyan]uv tool install[/cyan] Python CLI.
@@ -300,6 +306,7 @@ def deploy_python(
         force: Whether uv should replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
+        uv_executable: Optional uv executable path.
         execute_install: Whether to run `uv tool install` immediately.
 
     Raises:
@@ -334,6 +341,7 @@ def deploy_python(
         force=force,
         reinstall=reinstall,
         uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
+        uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
         execute_install=execute_install,
         make_default=make_default,
     )
@@ -374,6 +382,11 @@ def deploy_python(
     type=PATH,
     help="uv.toml file passed to uv with --config-file.",
 )
+@click.option(
+    "--uv-executable",
+    type=PATH,
+    help="uv executable path. Defaults to uv on PATH.",
+)
 @click.pass_obj
 def auto_constraints(
     config: AppConfig,
@@ -383,6 +396,7 @@ def auto_constraints(
     indexes: tuple[str, ...],
     find_links: tuple[str, ...],
     uv_config_file: Path | None,
+    uv_executable: Path | None,
 ) -> None:
     """Generate a constraints file for a Python package.
 
@@ -394,6 +408,7 @@ def auto_constraints(
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
         uv_config_file: Optional uv configuration file passed to uv.
+        uv_executable: Optional uv executable path.
 
     Raises:
         click.ClickException: If uv cannot generate constraints.
@@ -407,6 +422,7 @@ def auto_constraints(
             indexes=indexes or config.indexes,
             find_links=find_links or config.find_links,
             uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
+            uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
         )
     except ConstraintGenerationError as error:
         raise click.ClickException(str(error)) from error
@@ -592,6 +608,11 @@ def deploy_script(
     is_flag=True,
     help="Print actions that would run without creating files.",
 )
+@click.option(
+    "--uv-executable",
+    type=PATH,
+    help="uv executable path for Python tools. Defaults to uv on PATH.",
+)
 @click.pass_obj
 def deploy_env(
     config: AppConfig,
@@ -600,6 +621,7 @@ def deploy_env(
     prefix: Path | None,
     make_default: bool | None,
     dry_run: bool,
+    uv_executable: Path | None,
 ) -> None:
     """Deploy a collective environment from a TOML manifest.
 
@@ -611,6 +633,7 @@ def deploy_env(
         prefix: Optional install prefix overriding manifest and configuration.
         make_default: Optional override for manifest default behavior.
         dry_run: Whether to report actions without mutating the filesystem.
+        uv_executable: Optional uv executable path for Python tools.
 
     Raises:
         click.ClickException: If the manifest cannot be parsed.
@@ -637,7 +660,13 @@ def deploy_env(
             make_default=make_default,
         )
 
-    result = deploy_environment(spec=spec, module_root=resolved_module_root, prefix=resolved_prefix, dry_run=dry_run)
+    result = deploy_environment(
+        spec=spec,
+        module_root=resolved_module_root,
+        prefix=resolved_prefix,
+        uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
+        dry_run=dry_run,
+    )
     print_environment_result(result, dry_run)
 
 

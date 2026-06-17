@@ -23,6 +23,7 @@ class AppConfig:
         find_links: Default Python package locations passed to
             `uv tool install`.
         uv_config_file: Default uv configuration file passed to `uv tool`.
+        uv_executable: Default uv executable path.
     """
 
     prefix: Path | None = None
@@ -30,6 +31,7 @@ class AppConfig:
     indexes: tuple[str, ...] = ()
     find_links: tuple[str, ...] = ()
     uv_config_file: Path | None = None
+    uv_executable: Path | None = None
 
 
 def default_config_path() -> Path:
@@ -84,6 +86,7 @@ def load_file_config(path: Path) -> AppConfig:
         indexes=string_tuple(python_data.get("indexes"), "python.indexes"),
         find_links=string_tuple(python_data.get("find_links"), "python.find_links"),
         uv_config_file=optional_path(python_data.get("uv_config_file"), "python.uv_config_file"),
+        uv_executable=optional_path(python_data.get("uv_executable"), "python.uv_executable"),
     )
 
 
@@ -102,6 +105,7 @@ def overlay_env_config(config: AppConfig) -> AppConfig:
         indexes=env_tuple("MODULE_MANAGER_INDEXES") or env_tuple("MODULE_MANAGER_INDEX") or config.indexes,
         find_links=env_tuple("MODULE_MANAGER_FIND_LINKS") or config.find_links,
         uv_config_file=config.uv_config_file,
+        uv_executable=env_path("MODULE_MANAGER_UV_EXECUTABLE") or config.uv_executable,
     )
 
 

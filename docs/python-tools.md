@@ -11,6 +11,24 @@ Other uv settings, including `UV_CONFIG_FILE`, are preserved.
 Python package dependency because `module-manager` shells out to the `uv`
 executable and is intended to be installable by `uv` itself.
 
+If `uv` is not on `PATH`, or you want a pinned executable, pass
+`--uv-executable`:
+
+```sh
+module-manager deploy-python ruff 0.8.0 \
+  --package 'ruff==0.8.0' \
+  --uv-executable /opt/uv/bin/uv \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+The same default can be set for Python workflows with an environment variable:
+
+```sh
+export MODULE_MANAGER_UV_EXECUTABLE=/opt/uv/bin/uv
+```
+
 ## Deploy from PyPI
 
 ```sh
@@ -135,6 +153,7 @@ constraints file:
 ```sh
 module-manager auto-constraints gitconductor==0.7.0 \
   --index https://packages.example/simple \
+  --uv-executable /opt/uv/bin/uv \
   --output constraints.txt
 ```
 

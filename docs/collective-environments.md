@@ -32,6 +32,7 @@ refresh_packages = ["ruff"]
 force = false
 reinstall = false
 uv_config_file = "/prod/config/uv.toml"
+uv_executable = "/opt/uv/bin/uv"
 
 [[tools]]
 type = "rust"
@@ -51,6 +52,17 @@ Deploy the environment:
 ```sh
 module-manager deploy-env --file dev-tools.toml
 ```
+
+Use `--uv-executable` when all Python tools in the manifest should use a
+specific uv executable:
+
+```sh
+module-manager deploy-env --file dev-tools.toml --uv-executable /opt/uv/bin/uv
+```
+
+You can also set the same default with `MODULE_MANAGER_UV_EXECUTABLE`, or set
+`uv_executable` on an individual Python tool in the manifest when only that
+entry needs a different executable.
 
 This writes one shared environment:
 

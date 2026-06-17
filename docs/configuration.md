@@ -18,6 +18,7 @@ module_root = "/prod/modulefiles"
 indexes = ["https://packages.example/simple"]
 find_links = ["/prod/wheels"]
 uv_config_file = "/prod/config/uv.toml"
+uv_executable = "/opt/uv/bin/uv"
 ```
 
 `prefix` and `module_root` must resolve to different directories. Using the
@@ -37,9 +38,14 @@ export MODULE_MANAGER_PREFIX=/prod/tools
 export MODULE_MANAGER_MODULE_ROOT=/prod/modulefiles
 export MODULE_MANAGER_INDEXES=https://packages.example/simple,https://mirror.example/simple
 export MODULE_MANAGER_FIND_LINKS=/prod/wheels,/prod/more-wheels
+export MODULE_MANAGER_UV_EXECUTABLE=/opt/uv/bin/uv
 ```
 
 `MODULE_MANAGER_CONFIG` can point to an alternate TOML config file.
+
+`MODULE_MANAGER_UV_EXECUTABLE` sets the `uv` executable used by
+`deploy-python`, `deploy-env`, and `auto-constraints`. CLI `--uv-executable`
+options override it when provided.
 
 There is no `MODULE_MANAGER_*` environment variable for uv configuration files.
 Use uv's own `UV_CONFIG_FILE` environment variable when you want to set that via

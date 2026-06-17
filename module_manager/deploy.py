@@ -68,6 +68,7 @@ class EnvironmentToolSpec:
         version: Optional source tool version for documentation.
         package: Python package spec passed to `uv tool install`.
         uv_config_file: uv configuration file passed to `uv tool`.
+        uv_executable: uv executable path.
         binary: Rust binary path to copy into the shared `bin` directory.
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
@@ -92,6 +93,7 @@ class EnvironmentToolSpec:
     version: str | None = None
     package: str | None = None
     uv_config_file: Path | None = None
+    uv_executable: Path | None = None
     binary: Path | None = None
     script: Path | None = None
     python: str | None = None
@@ -206,6 +208,7 @@ def uv_install_command(
     force: bool = False,
     reinstall: bool = False,
     uv_config_file: Path | None = None,
+    uv_executable: Path | None = None,
 ) -> list[str]:
     """Build the uv command used to install a Python CLI tool.
 
@@ -225,11 +228,12 @@ def uv_install_command(
         force: Whether to replace existing executable entries.
         reinstall: Whether to reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
+        uv_executable: Optional uv executable path.
 
     Returns:
         Tokenized uv command suitable for `subprocess.run`.
     """
-    command = ["uv", "tool"]
+    command = [str(uv_executable or "uv"), "tool"]
     if uv_config_file:
         command.extend(["--config-file", str(uv_config_file)])
     command.append("install")
@@ -269,6 +273,7 @@ def uv_compile_command(
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
     uv_config_file: Path | None = None,
+    uv_executable: Path | None = None,
 ) -> list[str]:
     """Build the uv command used to compile Python constraints.
 
@@ -278,11 +283,12 @@ def uv_compile_command(
         indexes: Additional package index URLs.
         find_links: Wheelhouse directories or HTML package pages.
         uv_config_file: Optional uv configuration file passed to `uv`.
+        uv_executable: Optional uv executable path.
 
     Returns:
         Tokenized uv command suitable for `subprocess.run`.
     """
-    command = ["uv"]
+    command = [str(uv_executable or "uv")]
     if uv_config_file:
         command.extend(["--config-file", str(uv_config_file)])
     command.extend(
@@ -329,6 +335,7 @@ def generate_constraints(
     indexes: tuple[str, ...] = (),
     find_links: tuple[str, ...] = (),
     uv_config_file: Path | None = None,
+    uv_executable: Path | None = None,
     max_iterations: int = 20,
 ) -> ConstraintGenerationResult:
     """Generate a constraints file, discovering transitive URL dependencies.
@@ -340,6 +347,7 @@ def generate_constraints(
         indexes: Additional package index URLs passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
         uv_config_file: Optional uv configuration file passed to `uv`.
+        uv_executable: Optional uv executable path.
         max_iterations: Maximum uv compile attempts before failing.
 
     Returns:
@@ -350,11 +358,11 @@ def generate_constraints(
         ConstraintGenerationError: If uv fails without a new URL dependency to
             add, or if the iteration limit is reached.
     """
-    require_executable("uv")
+    require_executable(str(uv_executable or "uv"))
     output_file.parent.mkdir(parents=True, exist_ok=True)
     requirements = [package]
     discovered: list[str] = []
-    command = uv_compile_command(output_file, python, indexes, find_links, uv_config_file)
+    command = uv_compile_command(output_file, python, indexes, find_links, uv_config_file, uv_executable)
 
     for iteration in range(1, max_iterations + 1):
         completed = subprocess.run(
@@ -738,6 +746,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         version=optional_string(data, "version"),
         package=optional_string(data, "package"),
         uv_config_file=optional_manifest_path(data, "uv_config_file", base_dir),
+        uv_executable=optional_manifest_path(data, "uv_executable", base_dir),
         binary=optional_manifest_path(data, "binary", base_dir),
         script=optional_manifest_path(data, "script", base_dir),
         python=optional_string(data, "python"),
@@ -789,12 +798,17 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
     raise TypeError(msg)
 
 
-def environment_actions(spec: EnvironmentSpec, paths: DeploymentPaths) -> tuple[str, ...]:
+def environment_actions(
+    spec: EnvironmentSpec,
+    paths: DeploymentPaths,
+    uv_executable: Path | None = None,
+) -> tuple[str, ...]:
     """Build human-readable actions for a collective environment deployment.
 
     Args:
         spec: Collective environment specification.
         paths: Deployment paths for the environment module.
+        uv_executable: Optional default uv executable path.
 
     Returns:
         Planned deployment actions.
@@ -822,6 +836,7 @@ def environment_actions(spec: EnvironmentSpec, paths: DeploymentPaths) -> tuple[
                 tool.force,
                 tool.reinstall,
                 tool.uv_config_file,
+                tool.uv_executable or uv_executable,
             )
             actions.append(
                 f"install python {tool.name}: "
@@ -845,6 +860,7 @@ def deploy_environment(
     spec: EnvironmentSpec,
     module_root: Path,
     prefix: Path,
+    uv_executable: Path | None = None,
     dry_run: bool = False,
 ) -> EnvironmentDeploymentResult:
     """Deploy or preview a collective environment.
@@ -853,6 +869,7 @@ def deploy_environment(
         spec: Collective environment specification.
         module_root: Root of the environment module tree.
         prefix: Root installation prefix for deployed tools.
+        uv_executable: Optional default uv executable path.
         dry_run: Whether to report actions without mutating the filesystem.
 
     Returns:
@@ -863,7 +880,7 @@ def deploy_environment(
         subprocess.CalledProcessError: If `uv tool install` fails.
     """
     paths = deployment_paths(module_root, prefix, spec.name, spec.version)
-    actions = environment_actions(spec, paths)
+    actions = environment_actions(spec, paths, uv_executable)
 
     if dry_run:
         return EnvironmentDeploymentResult(paths=paths, actions=actions)
@@ -872,7 +889,8 @@ def deploy_environment(
     tool_dir = paths.install_root / "uv-tools"
     for tool in spec.tools:
         if tool.tool_type == "python" and tool.package:
-            require_executable("uv")
+            resolved_uv_executable = tool.uv_executable or uv_executable
+            require_executable(str(resolved_uv_executable or "uv"))
             subprocess.run(
                 uv_install_command(
                     tool.package,
@@ -890,6 +908,7 @@ def deploy_environment(
                     tool.force,
                     tool.reinstall,
                     tool.uv_config_file,
+                    resolved_uv_executable,
                 ),
                 check=True,
                 env=uv_install_environment(tool_dir, paths.bin_dir),
@@ -940,6 +959,7 @@ def deploy_python_tool(
     force: bool = False,
     reinstall: bool = False,
     uv_config_file: Path | None = None,
+    uv_executable: Path | None = None,
     execute_install: bool = False,
     make_default: bool = True,
 ) -> DeploymentPaths:
@@ -967,6 +987,7 @@ def deploy_python_tool(
         force: Whether uv should replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
+        uv_executable: Optional uv executable path.
         execute_install: Whether to run `uv tool install` immediately.
         make_default: Whether to make this version the module default.
 
@@ -997,10 +1018,11 @@ def deploy_python_tool(
         force,
         reinstall,
         uv_config_file,
+        uv_executable,
     )
 
     if execute_install:
-        require_executable("uv")
+        require_executable(str(uv_executable or "uv"))
         subprocess.run(command, check=True, env=uv_install_environment(tool_dir, paths.bin_dir))
 
     install_hint = (

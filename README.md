@@ -43,10 +43,14 @@ module-manager deploy-python ruff 0.8.0 \
   --package 'ruff==0.8.0' \
   --default-index https://packages.example/simple \
   --constraints /prod/constraints/runtime.txt \
+  --uv-executable /opt/uv/bin/uv \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
   --execute-install
 ```
+
+Set `MODULE_MANAGER_UV_EXECUTABLE=/opt/uv/bin/uv` to use the same uv path by
+default.
 
 Deploy a Rust binary:
 
