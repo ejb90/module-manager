@@ -88,8 +88,17 @@ def test_python_tool_install_command_accepts_indexes() -> None:
     assert uv_install_command(
         "internal-tool==1.2.3",
         indexes=("https://packages.example/simple", "https://mirror.example/simple"),
+        default_index="https://default.example/simple",
         find_links=("/prod/wheels",),
+        no_index=True,
+        index_strategy="unsafe-best-match",
+        keyring_provider="subprocess",
         constraints=("/prod/constraints.txt",),
+        no_cache=True,
+        refresh=True,
+        refresh_packages=("internal-tool",),
+        force=True,
+        reinstall=True,
     ) == [
         "uv",
         "tool",
@@ -98,10 +107,23 @@ def test_python_tool_install_command_accepts_indexes() -> None:
         "https://packages.example/simple",
         "--index",
         "https://mirror.example/simple",
+        "--default-index",
+        "https://default.example/simple",
         "--find-links",
         "/prod/wheels",
+        "--no-index",
+        "--index-strategy",
+        "unsafe-best-match",
+        "--keyring-provider",
+        "subprocess",
         "--constraints",
         "/prod/constraints.txt",
+        "--no-cache",
+        "--refresh",
+        "--refresh-package",
+        "internal-tool",
+        "--force",
+        "--reinstall",
         "internal-tool==1.2.3",
     ]
 
@@ -268,16 +290,26 @@ def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Pat
         module_root=tmp_path / "modules",
         prefix=tmp_path / "tools",
         indexes=("https://packages.example/simple",),
+        default_index="https://default.example/simple",
         find_links=("/prod/wheels",),
+        index_strategy="first-index",
+        keyring_provider="disabled",
         constraints=("/prod/constraints.txt",),
+        refresh_packages=("internal-tool",),
+        force=True,
         uv_config_file=Path("/prod/uv.toml"),
     )
 
     modulefile = paths.modulefile.read_text(encoding="utf-8")
     assert "--config-file /prod/uv.toml" in modulefile
     assert "--index https://packages.example/simple" in modulefile
+    assert "--default-index https://default.example/simple" in modulefile
     assert "--find-links /prod/wheels" in modulefile
+    assert "--index-strategy first-index" in modulefile
+    assert "--keyring-provider disabled" in modulefile
     assert "--constraints /prod/constraints.txt" in modulefile
+    assert "--refresh-package internal-tool" in modulefile
+    assert "--force" in modulefile
 
 
 def test_deploy_python_tool_writes_url_dependency_to_install_hint(tmp_path: Path) -> None:
@@ -536,8 +568,17 @@ version = "0.8.0"
 package = "ruff==0.8.0"
 python = "3.12"
 indexes = ["https://packages.example/simple"]
+default_index = "https://default.example/simple"
 find_links = ["/prod/wheels"]
+no_index = true
+index_strategy = "unsafe-best-match"
+keyring_provider = "subprocess"
 constraints = ["constraints.txt", "/prod/global-constraints.txt"]
+no_cache = true
+refresh = true
+refresh_packages = ["ruff"]
+force = true
+reinstall = true
 uv_config_file = "uv.toml"
 
 [[tools]]
@@ -557,7 +598,16 @@ script = "scripts/helper"
     assert not spec.make_default
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].indexes == ("https://packages.example/simple",)
+    assert spec.tools[0].default_index == "https://default.example/simple"
+    assert spec.tools[0].no_index
+    assert spec.tools[0].index_strategy == "unsafe-best-match"
+    assert spec.tools[0].keyring_provider == "subprocess"
     assert spec.tools[0].constraints == (str(tmp_path / "constraints.txt"), "/prod/global-constraints.txt")
+    assert spec.tools[0].no_cache
+    assert spec.tools[0].refresh
+    assert spec.tools[0].refresh_packages == ("ruff",)
+    assert spec.tools[0].force
+    assert spec.tools[0].reinstall
     assert spec.tools[0].uv_config_file == tmp_path / "uv.toml"
     assert spec.tools[1].script == tmp_path / "scripts/helper"
 
@@ -666,7 +716,13 @@ type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
 python = "3.12"
+default_index = "https://default.example/simple"
+no_index = true
 constraints = ["constraints.txt"]
+no_cache = true
+refresh = true
+refresh_packages = ["ruff"]
+force = true
 uv_config_file = "uv.toml"
 """.strip(),
         encoding="utf-8",
@@ -687,8 +743,16 @@ uv_config_file = "uv.toml"
         "install",
         "--python",
         "3.12",
+        "--default-index",
+        "https://default.example/simple",
+        "--no-index",
         "--constraints",
         str(tmp_path / "constraints.txt"),
+        "--no-cache",
+        "--refresh",
+        "--refresh-package",
+        "ruff",
+        "--force",
         "ruff==0.8.0",
     ]
     assert calls[0][1]["UV_TOOL_DIR"] == str(result.paths.install_root / "uv-tools")

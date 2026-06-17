@@ -41,6 +41,7 @@ Deploy a Python CLI with `uv tool install`:
 ```sh
 module-manager deploy-python ruff 0.8.0 \
   --package 'ruff==0.8.0' \
+  --default-index https://packages.example/simple \
   --constraints /prod/constraints/runtime.txt \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
@@ -60,6 +61,16 @@ Generate a constraints file for a Python CLI:
 
 ```sh
 module-manager auto-constraints ruff==0.8.0 --output constraints.txt
+```
+
+Deploy from a direct wheel or Git URL:
+
+```sh
+module-manager deploy-python my-tool 1.0.0 \
+  --package 'my-tool @ file:///prod/wheels/my_tool-1.0.0-py3-none-any.whl' \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
 ```
 
 Deploy a shell script:

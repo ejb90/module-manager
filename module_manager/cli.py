@@ -203,11 +203,23 @@ def main(ctx: click.Context, config: Path | None) -> None:
     multiple=True,
     help="Additional package index URL passed to uv. May be used more than once.",
 )
+@click.option("--default-index", help="Default package index URL passed to uv.")
 @click.option(
     "--find-links",
     "find_links",
     multiple=True,
     help="Directory or HTML page of packages passed to uv. May be used more than once.",
+)
+@click.option("--no-index", is_flag=True, help="Ignore registry indexes and use direct URLs or find-links.")
+@click.option(
+    "--index-strategy",
+    type=click.Choice(["first-index", "unsafe-first-match", "unsafe-best-match"]),
+    help="Package index strategy passed to uv.",
+)
+@click.option(
+    "--keyring-provider",
+    type=click.Choice(["disabled", "subprocess"]),
+    help="Keyring provider passed to uv.",
 )
 @click.option(
     "--constraints",
@@ -215,6 +227,16 @@ def main(ctx: click.Context, config: Path | None) -> None:
     multiple=True,
     help="Requirements constraint file passed to uv. May be used more than once.",
 )
+@click.option("--no-cache", is_flag=True, help="Avoid reading from or writing to the uv cache.")
+@click.option("--refresh", is_flag=True, help="Refresh all uv cached data.")
+@click.option(
+    "--refresh-package",
+    "refresh_packages",
+    multiple=True,
+    help="Refresh cached data for a package. May be used more than once.",
+)
+@click.option("--force", is_flag=True, help="Replace existing executable entries.")
+@click.option("--reinstall", is_flag=True, help="Reinstall all packages in the tool environment.")
 @click.option(
     "--uv-config-file",
     type=PATH,
@@ -238,8 +260,17 @@ def deploy_python(
     package: str,
     python: str | None,
     indexes: tuple[str, ...],
+    default_index: str | None,
     find_links: tuple[str, ...],
+    no_index: bool,
+    index_strategy: str | None,
+    keyring_provider: str | None,
     constraints: tuple[str, ...],
+    no_cache: bool,
+    refresh: bool,
+    refresh_packages: tuple[str, ...],
+    force: bool,
+    reinstall: bool,
     uv_config_file: Path | None,
     execute_install: bool,
 ) -> None:
@@ -257,8 +288,17 @@ def deploy_python(
         package: Package spec passed to `uv tool install`.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
+        default_index: Default package index URL passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        no_index: Whether uv should ignore registry indexes.
+        index_strategy: Package index strategy passed to uv.
+        keyring_provider: Keyring provider passed to uv.
         constraints: Requirements constraint files passed to uv.
+        no_cache: Whether uv should avoid reading from or writing to cache.
+        refresh: Whether uv should refresh cached data.
+        refresh_packages: Packages whose cached data uv should refresh.
+        force: Whether uv should replace existing executable entries.
+        reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         execute_install: Whether to run `uv tool install` immediately.
 
@@ -282,8 +322,17 @@ def deploy_python(
         homepage=homepage,
         python=python,
         indexes=indexes or config.indexes,
+        default_index=default_index,
         find_links=find_links or config.find_links,
+        no_index=no_index,
+        index_strategy=index_strategy,
+        keyring_provider=keyring_provider,
         constraints=constraints,
+        no_cache=no_cache,
+        refresh=refresh,
+        refresh_packages=refresh_packages,
+        force=force,
+        reinstall=reinstall,
         uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
         execute_install=execute_install,
         make_default=make_default,
