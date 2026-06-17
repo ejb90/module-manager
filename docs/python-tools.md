@@ -34,15 +34,20 @@ unchanged.
 ```sh
 module-manager deploy-python gitconductor 0.1.0 \
   --package gitconductor==0.1.0 \
+  --default-index https://packages.example/simple \
   --index https://packages.example/simple \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
   --execute-install
 ```
 
-`--index` may be used more than once.
+`--index` may be used more than once. Use `--default-index` to replace uv's
+default package index, or `--no-index` when resolution should use only direct
+URLs and `--find-links` locations.
 
 ## Deploy from a Wheelhouse
+
+Use `--find-links` when wheels are staged in a directory or simple HTML page:
 
 ```sh
 module-manager deploy-python gitconductor 0.1.0 \
@@ -53,7 +58,41 @@ module-manager deploy-python gitconductor 0.1.0 \
   --execute-install
 ```
 
+Add `--no-index` to make the install fully wheelhouse-only:
+
+```sh
+module-manager deploy-python gitconductor 0.1.0 \
+  --package gitconductor==0.1.0 \
+  --find-links /prod/wheels \
+  --no-index \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
 `--find-links` may be used more than once.
+
+## Deploy from a Wheel URL
+
+Pass a direct wheel URL or file URL as the package spec:
+
+```sh
+module-manager deploy-python gitconductor 0.1.0 \
+  --package 'gitconductor @ https://packages.example/files/gitconductor-0.1.0-py3-none-any.whl' \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+For a local wheel file:
+
+```sh
+module-manager deploy-python gitconductor 0.1.0 \
+  --package 'gitconductor @ file:///prod/wheels/gitconductor-0.1.0-py3-none-any.whl' \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
 
 ## Use Constraint Files
 
@@ -69,6 +108,24 @@ module-manager deploy-python gitconductor 0.1.0 \
 ```
 
 `--constraints` may be used more than once.
+
+## Cache and Refresh Controls
+
+Pass uv cache controls through when you need fresh index or package metadata:
+
+```sh
+module-manager deploy-python gitconductor 0.1.0 \
+  --package gitconductor==0.1.0 \
+  --refresh \
+  --refresh-package gitconductor \
+  --no-cache \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+Use `--force` or `--reinstall` when re-running an install into an existing
+versioned tool environment.
 
 ## Generate Constraint Files
 
@@ -111,12 +168,22 @@ through the environment.
 
 ## Deploy from VCS
 
-`--package` is passed directly to `uv tool install`, so VCS package specs are
-supported.
+`--package` is passed directly to `uv tool install`, so Git package specs are
+supported. Pin a tag, branch, or commit to keep deployments reproducible.
 
 ```sh
 module-manager deploy-python mytool 1.0.0 \
   --package 'git+https://github.com/org/repo.git@v1.0.0' \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+For an SSH Git URL:
+
+```sh
+module-manager deploy-python mytool 1.0.0 \
+  --package 'git+ssh://git@github.com/org/repo.git@v1.0.0' \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
   --execute-install

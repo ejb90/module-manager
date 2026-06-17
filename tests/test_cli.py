@@ -56,10 +56,23 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "modules",
                 "--index",
                 "https://packages.example/simple",
+                "--default-index",
+                "https://default.example/simple",
                 "--find-links",
                 "/prod/wheels",
+                "--no-index",
+                "--index-strategy",
+                "unsafe-first-match",
+                "--keyring-provider",
+                "subprocess",
                 "--constraints",
                 "/prod/constraints.txt",
+                "--no-cache",
+                "--refresh",
+                "--refresh-package",
+                "ruff",
+                "--force",
+                "--reinstall",
                 "--uv-config-file",
                 "/prod/uv.toml",
             ],
@@ -70,7 +83,16 @@ def test_deploy_python_command_writes_modulefile() -> None:
     assert "modulefile: modules/ruff/0.8.0" in result.output
     assert "default version: modules/ruff/.version" in result.output
     assert "--config-file /prod/uv.toml" in modulefile
+    assert "--default-index https://default.example/simple" in modulefile
+    assert "--no-index" in modulefile
+    assert "--index-strategy unsafe-first-match" in modulefile
+    assert "--keyring-provider subprocess" in modulefile
     assert "--constraints /prod/constraints.txt" in modulefile
+    assert "--no-cache" in modulefile
+    assert "--refresh" in modulefile
+    assert "--refresh-package ruff" in modulefile
+    assert "--force" in modulefile
+    assert "--reinstall" in modulefile
 
 
 def test_deploy_python_command_uses_config_defaults() -> None:
@@ -463,7 +485,13 @@ name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
 indexes = ["https://packages.example/simple"]
+default_index = "https://default.example/simple"
+no_index = true
 constraints = ["constraints.txt"]
+no_cache = true
+refresh = true
+refresh_packages = ["ruff"]
+force = true
 """.strip(),
             encoding="utf-8",
         )
@@ -474,7 +502,13 @@ constraints = ["constraints.txt"]
     assert "would create install root: tools/dev-tools/2026.05" in result.output
     assert "would install python ruff:" in result.output
     assert "--index https://packages.example/simple" in result.output
+    assert "--default-index https://default.example/simple" in result.output
+    assert "--no-index" in result.output
     assert "--constraints constraints.txt" in result.output
+    assert "--no-cache" in result.output
+    assert "--refresh" in result.output
+    assert "--refresh-package ruff" in result.output
+    assert "--force" in result.output
     assert not install_root_exists
 
 

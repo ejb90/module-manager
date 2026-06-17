@@ -72,8 +72,17 @@ class EnvironmentToolSpec:
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
+        default_index: Default package index URL passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        no_index: Whether uv should ignore registry indexes.
+        index_strategy: Package index strategy passed to uv.
+        keyring_provider: Keyring provider passed to uv.
         constraints: Constraint requirement files passed to uv.
+        no_cache: Whether uv should avoid reading from or writing to cache.
+        refresh: Whether uv should refresh cached data.
+        refresh_packages: Packages whose cached data uv should refresh.
+        force: Whether uv should replace existing executable entries.
+        reinstall: Whether uv should reinstall all packages.
         description: Optional tool description.
         homepage: Optional upstream homepage.
     """
@@ -87,8 +96,17 @@ class EnvironmentToolSpec:
     script: Path | None = None
     python: str | None = None
     indexes: tuple[str, ...] = ()
+    default_index: str | None = None
     find_links: tuple[str, ...] = ()
+    no_index: bool = False
+    index_strategy: str | None = None
+    keyring_provider: str | None = None
     constraints: tuple[str, ...] = ()
+    no_cache: bool = False
+    refresh: bool = False
+    refresh_packages: tuple[str, ...] = ()
+    force: bool = False
+    reinstall: bool = False
     description: str | None = None
     homepage: str | None = None
 
@@ -176,8 +194,17 @@ def uv_install_command(
     package: str,
     python: str | None = None,
     indexes: tuple[str, ...] = (),
+    default_index: str | None = None,
     find_links: tuple[str, ...] = (),
+    no_index: bool = False,
+    index_strategy: str | None = None,
+    keyring_provider: str | None = None,
     constraints: tuple[str, ...] = (),
+    no_cache: bool = False,
+    refresh: bool = False,
+    refresh_packages: tuple[str, ...] = (),
+    force: bool = False,
+    reinstall: bool = False,
     uv_config_file: Path | None = None,
 ) -> list[str]:
     """Build the uv command used to install a Python CLI tool.
@@ -186,8 +213,17 @@ def uv_install_command(
         package: Package spec passed to `uv tool install`.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs.
+        default_index: Default package index URL.
         find_links: Wheelhouse directories or HTML package pages.
+        no_index: Whether to ignore registry indexes.
+        index_strategy: Package index strategy.
+        keyring_provider: Keyring provider.
         constraints: Constraint requirement files.
+        no_cache: Whether to avoid reading from or writing to cache.
+        refresh: Whether to refresh cached data.
+        refresh_packages: Packages whose cached data uv should refresh.
+        force: Whether to replace existing executable entries.
+        reinstall: Whether to reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
 
     Returns:
@@ -201,10 +237,28 @@ def uv_install_command(
         command.extend(["--python", python])
     for index in indexes:
         command.extend(["--index", index])
+    if default_index:
+        command.extend(["--default-index", default_index])
     for link in find_links:
         command.extend(["--find-links", link])
+    if no_index:
+        command.append("--no-index")
+    if index_strategy:
+        command.extend(["--index-strategy", index_strategy])
+    if keyring_provider:
+        command.extend(["--keyring-provider", keyring_provider])
     for constraint in constraints:
         command.extend(["--constraints", constraint])
+    if no_cache:
+        command.append("--no-cache")
+    if refresh:
+        command.append("--refresh")
+    for package_name in refresh_packages:
+        command.extend(["--refresh-package", package_name])
+    if force:
+        command.append("--force")
+    if reinstall:
+        command.append("--reinstall")
     command.append(package)
     return command
 
@@ -688,8 +742,17 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         script=optional_manifest_path(data, "script", base_dir),
         python=optional_string(data, "python"),
         indexes=optional_string_tuple(data, "indexes"),
+        default_index=optional_string(data, "default_index"),
         find_links=optional_string_tuple(data, "find_links"),
+        no_index=optional_bool(data, "no_index", False),
+        index_strategy=optional_string(data, "index_strategy"),
+        keyring_provider=optional_string(data, "keyring_provider"),
         constraints=tuple(str(path) for path in optional_manifest_paths(data, "constraints", base_dir)),
+        no_cache=optional_bool(data, "no_cache", False),
+        refresh=optional_bool(data, "refresh", False),
+        refresh_packages=optional_string_tuple(data, "refresh_packages"),
+        force=optional_bool(data, "force", False),
+        reinstall=optional_bool(data, "reinstall", False),
         description=optional_string(data, "description"),
         homepage=optional_string(data, "homepage"),
     )
@@ -747,8 +810,17 @@ def environment_actions(spec: EnvironmentSpec, paths: DeploymentPaths) -> tuple[
                 tool.package,
                 tool.python,
                 tool.indexes,
+                tool.default_index,
                 tool.find_links,
+                tool.no_index,
+                tool.index_strategy,
+                tool.keyring_provider,
                 tool.constraints,
+                tool.no_cache,
+                tool.refresh,
+                tool.refresh_packages,
+                tool.force,
+                tool.reinstall,
                 tool.uv_config_file,
             )
             actions.append(
@@ -806,8 +878,17 @@ def deploy_environment(
                     tool.package,
                     tool.python,
                     tool.indexes,
+                    tool.default_index,
                     tool.find_links,
+                    tool.no_index,
+                    tool.index_strategy,
+                    tool.keyring_provider,
                     tool.constraints,
+                    tool.no_cache,
+                    tool.refresh,
+                    tool.refresh_packages,
+                    tool.force,
+                    tool.reinstall,
                     tool.uv_config_file,
                 ),
                 check=True,
@@ -847,8 +928,17 @@ def deploy_python_tool(
     homepage: str | None = None,
     python: str | None = None,
     indexes: tuple[str, ...] = (),
+    default_index: str | None = None,
     find_links: tuple[str, ...] = (),
+    no_index: bool = False,
+    index_strategy: str | None = None,
+    keyring_provider: str | None = None,
     constraints: tuple[str, ...] = (),
+    no_cache: bool = False,
+    refresh: bool = False,
+    refresh_packages: tuple[str, ...] = (),
+    force: bool = False,
+    reinstall: bool = False,
     uv_config_file: Path | None = None,
     execute_install: bool = False,
     make_default: bool = True,
@@ -865,8 +955,17 @@ def deploy_python_tool(
         homepage: Optional upstream homepage shown in module help.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
+        default_index: Default package index URL passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        no_index: Whether uv should ignore registry indexes.
+        index_strategy: Package index strategy passed to uv.
+        keyring_provider: Keyring provider passed to uv.
         constraints: Constraint requirement files passed to uv.
+        no_cache: Whether uv should avoid reading from or writing to cache.
+        refresh: Whether uv should refresh cached data.
+        refresh_packages: Packages whose cached data uv should refresh.
+        force: Whether uv should replace existing executable entries.
+        reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         execute_install: Whether to run `uv tool install` immediately.
         make_default: Whether to make this version the module default.
@@ -882,7 +981,23 @@ def deploy_python_tool(
     paths = deployment_paths(module_root, prefix, name, version)
     paths.bin_dir.mkdir(parents=True, exist_ok=True)
     tool_dir = paths.install_root / "uv-tools"
-    command = uv_install_command(package, python, indexes, find_links, constraints, uv_config_file)
+    command = uv_install_command(
+        package,
+        python,
+        indexes,
+        default_index,
+        find_links,
+        no_index,
+        index_strategy,
+        keyring_provider,
+        constraints,
+        no_cache,
+        refresh,
+        refresh_packages,
+        force,
+        reinstall,
+        uv_config_file,
+    )
 
     if execute_install:
         require_executable("uv")

@@ -49,8 +49,17 @@ module-manager deploy-python NAME VERSION \
   --package PACKAGE \
   [--python PYTHON] \
   [--index URL] \
+  [--default-index URL] \
   [--find-links PATH_OR_URL] \
+  [--no-index] \
+  [--index-strategy STRATEGY] \
+  [--keyring-provider PROVIDER] \
   [--constraints PATH] \
+  [--no-cache] \
+  [--refresh] \
+  [--refresh-package PACKAGE] \
+  [--force] \
+  [--reinstall] \
   [--uv-config-file PATH] \
   [--prefix PATH] \
   [--module-root PATH] \
