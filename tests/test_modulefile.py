@@ -168,7 +168,11 @@ def test_uv_compile_command_accepts_sources_and_config() -> None:
         Path("/prod/constraints.txt"),
         python="3.12",
         indexes=("https://packages.example/simple",),
+        default_index="https://default.example/simple",
         find_links=("/prod/wheels",),
+        no_index=True,
+        index_strategy="unsafe-best-match",
+        keyring_provider="subprocess",
         uv_config_file=Path("/prod/uv.toml"),
         uv_executable=Path("/opt/uv/bin/uv"),
     ) == [
@@ -186,8 +190,15 @@ def test_uv_compile_command_accepts_sources_and_config() -> None:
         "3.12",
         "--index",
         "https://packages.example/simple",
+        "--default-index",
+        "https://default.example/simple",
         "--find-links",
         "/prod/wheels",
+        "--no-index",
+        "--index-strategy",
+        "unsafe-best-match",
+        "--keyring-provider",
+        "subprocess",
     ]
 
 
@@ -354,6 +365,37 @@ def test_require_executable_reports_missing_command(monkeypatch: pytest.MonkeyPa
 
     with pytest.raises(MissingExecutableError, match="Required executable not found"):
         require_executable("uv")
+
+
+def test_failed_python_install_rolls_back_new_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Failed Python installs should remove deployment paths created for the attempt.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        monkeypatch: Pytest helper used to replace process execution.
+    """
+
+    def fake_run(command: list[str], check: bool, env: dict[str, str]) -> None:
+        """Simulate a failed uv install."""
+        assert check
+        assert env["UV_TOOL_BIN_DIR"]
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr("module_manager.deploy.require_executable", lambda _name: "uv")
+    monkeypatch.setattr("module_manager.deploy.subprocess.run", fake_run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        deploy_python_tool(
+            name="ruff",
+            version="0.8.0",
+            package="ruff==0.8.0",
+            module_root=tmp_path / "modules",
+            prefix=tmp_path / "tools",
+            execute_install=True,
+        )
+
+    assert not (tmp_path / "tools" / "ruff" / "0.8.0").exists()
+    assert not (tmp_path / "modules" / "ruff" / "0.8.0").exists()
 
 
 def test_deploy_rust_tool_copies_binary_and_marks_executable(tmp_path: Path) -> None:
@@ -649,6 +691,20 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
         (
             'name = "x"\nversion = "1"\n[[tools]]\ntype = "other"\nname = "tool"',
             "type must be one of",
+        ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\n'
+                'name = "ruff"\npackage = "ruff"\nindex_strategy = "bad"'
+            ),
+            "index_strategy must be one of",
+        ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\n'
+                'name = "ruff"\npackage = "ruff"\nkeyring_provider = "bad"'
+            ),
+            "keyring_provider must be one of",
         ),
     ]
 

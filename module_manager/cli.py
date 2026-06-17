@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import subprocess
+import tomllib
 from pathlib import Path
 from typing import TypeVar
 
 import rich_click as click
-import tomllib
 from click import Command
 
 from . import __version__
 from .config import AppConfig, load_config
 from .deploy import (
+    VALID_INDEX_STRATEGIES,
+    VALID_KEYRING_PROVIDERS,
     ConstraintGenerationError,
     EnvironmentDeploymentResult,
+    MissingExecutableError,
     UninstallResult,
     deploy_environment,
     deploy_python_tool,
@@ -33,6 +37,7 @@ click.rich_click.STYLE_METAVAR = "yellow"
 click.rich_click.HEADER_TEXT = "module-manager"
 
 PATH = click.Path(path_type=Path)
+FILE_PATH = click.Path(path_type=Path, exists=True, dir_okay=False)
 ClickCommand = TypeVar("ClickCommand", bound=Command)
 
 TOP_LEVEL_EXAMPLES = (
@@ -213,12 +218,12 @@ def main(ctx: click.Context, config: Path | None) -> None:
 @click.option("--no-index", is_flag=True, help="Ignore registry indexes and use direct URLs or find-links.")
 @click.option(
     "--index-strategy",
-    type=click.Choice(["first-index", "unsafe-first-match", "unsafe-best-match"]),
+    type=click.Choice(VALID_INDEX_STRATEGIES),
     help="Package index strategy passed to uv.",
 )
 @click.option(
     "--keyring-provider",
-    type=click.Choice(["disabled", "subprocess"]),
+    type=click.Choice(VALID_KEYRING_PROVIDERS),
     help="Keyring provider passed to uv.",
 )
 @click.option(
@@ -319,32 +324,35 @@ def deploy_python(
         module_root or config.module_root,
         prefix or config.prefix,
     )
-    paths = deploy_python_tool(
-        name=name,
-        version=version,
-        package=package,
-        module_root=resolved_module_root,
-        prefix=resolved_prefix,
-        description=description,
-        homepage=homepage,
-        python=python,
-        indexes=indexes or config.indexes,
-        default_index=default_index,
-        find_links=find_links or config.find_links,
-        no_index=no_index,
-        index_strategy=index_strategy,
-        keyring_provider=keyring_provider,
-        constraints=constraints,
-        no_cache=no_cache,
-        refresh=refresh,
-        refresh_packages=refresh_packages,
-        force=force,
-        reinstall=reinstall,
-        uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
-        uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
-        execute_install=execute_install,
-        make_default=make_default,
-    )
+    try:
+        paths = deploy_python_tool(
+            name=name,
+            version=version,
+            package=package,
+            module_root=resolved_module_root,
+            prefix=resolved_prefix,
+            description=description,
+            homepage=homepage,
+            python=python,
+            indexes=indexes or config.indexes,
+            default_index=default_index,
+            find_links=find_links or config.find_links,
+            no_index=no_index,
+            index_strategy=index_strategy,
+            keyring_provider=keyring_provider,
+            constraints=constraints,
+            no_cache=no_cache,
+            refresh=refresh,
+            refresh_packages=refresh_packages,
+            force=force,
+            reinstall=reinstall,
+            uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
+            uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
+            execute_install=execute_install,
+            make_default=make_default,
+        )
+    except DEPLOYMENT_EXCEPTIONS as error:
+        raise click.ClickException(format_deployment_error(error)) from error
     print_result(
         paths.modulefile, paths.install_root, paths.bin_dir, paths.default_version_file if make_default else None
     )
@@ -371,11 +379,23 @@ def deploy_python(
     multiple=True,
     help="Additional package index URL passed to uv. May be used more than once.",
 )
+@click.option("--default-index", help="Default package index URL passed to uv.")
 @click.option(
     "--find-links",
     "find_links",
     multiple=True,
     help="Directory or HTML page of packages passed to uv. May be used more than once.",
+)
+@click.option("--no-index", is_flag=True, help="Ignore registry indexes and use direct URLs or find-links.")
+@click.option(
+    "--index-strategy",
+    type=click.Choice(VALID_INDEX_STRATEGIES),
+    help="Package index strategy passed to uv.",
+)
+@click.option(
+    "--keyring-provider",
+    type=click.Choice(VALID_KEYRING_PROVIDERS),
+    help="Keyring provider passed to uv.",
 )
 @click.option(
     "--uv-config-file",
@@ -394,7 +414,11 @@ def auto_constraints(
     output_file: Path,
     python: str | None,
     indexes: tuple[str, ...],
+    default_index: str | None,
     find_links: tuple[str, ...],
+    no_index: bool,
+    index_strategy: str | None,
+    keyring_provider: str | None,
     uv_config_file: Path | None,
     uv_executable: Path | None,
 ) -> None:
@@ -406,7 +430,11 @@ def auto_constraints(
         output_file: Constraints file to write.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
+        default_index: Default package index URL passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
+        no_index: Whether uv should ignore registry indexes.
+        index_strategy: Package index strategy passed to uv.
+        keyring_provider: Keyring provider passed to uv.
         uv_config_file: Optional uv configuration file passed to uv.
         uv_executable: Optional uv executable path.
 
@@ -420,11 +448,15 @@ def auto_constraints(
             output_file=output_file.expanduser(),
             python=python,
             indexes=indexes or config.indexes,
+            default_index=default_index,
             find_links=find_links or config.find_links,
+            no_index=no_index,
+            index_strategy=index_strategy,
+            keyring_provider=keyring_provider,
             uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
             uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
         )
-    except ConstraintGenerationError as error:
+    except (ConstraintGenerationError, MissingExecutableError, OSError, subprocess.CalledProcessError) as error:
         raise click.ClickException(str(error)) from error
 
     click.echo(f"constraints: {result.output_file}")
@@ -442,7 +474,7 @@ def auto_constraints(
 @common_options
 @click.option(
     "--binary",
-    type=PATH,
+    type=FILE_PATH,
     help="Compiled binary to copy into the versioned prefix.",
 )
 @click.option(
@@ -485,17 +517,20 @@ def deploy_rust(
         module_root or config.module_root,
         prefix or config.prefix,
     )
-    paths = deploy_rust_tool(
-        name=name,
-        version=version,
-        module_root=resolved_module_root,
-        prefix=resolved_prefix,
-        binary=binary.expanduser() if binary else None,
-        description=description,
-        homepage=homepage,
-        make_default=make_default,
-        dry_run=dry_run,
-    )
+    try:
+        paths = deploy_rust_tool(
+            name=name,
+            version=version,
+            module_root=resolved_module_root,
+            prefix=resolved_prefix,
+            binary=binary.expanduser() if binary else None,
+            description=description,
+            homepage=homepage,
+            make_default=make_default,
+            dry_run=dry_run,
+        )
+    except DEPLOYMENT_EXCEPTIONS as error:
+        raise click.ClickException(format_deployment_error(error)) from error
     print_result(
         paths.modulefile,
         paths.install_root,
@@ -513,7 +548,7 @@ def deploy_rust(
 @common_options
 @click.option(
     "--script",
-    type=PATH,
+    type=FILE_PATH,
     help="Shell script to copy into the versioned prefix.",
 )
 @click.option(
@@ -555,17 +590,20 @@ def deploy_script(
         module_root or config.module_root,
         prefix or config.prefix,
     )
-    paths = deploy_script_tool(
-        name=name,
-        version=version,
-        module_root=resolved_module_root,
-        prefix=resolved_prefix,
-        script=script.expanduser() if script else None,
-        description=description,
-        homepage=homepage,
-        make_default=make_default,
-        dry_run=dry_run,
-    )
+    try:
+        paths = deploy_script_tool(
+            name=name,
+            version=version,
+            module_root=resolved_module_root,
+            prefix=resolved_prefix,
+            script=script.expanduser() if script else None,
+            description=description,
+            homepage=homepage,
+            make_default=make_default,
+            dry_run=dry_run,
+        )
+    except DEPLOYMENT_EXCEPTIONS as error:
+        raise click.ClickException(format_deployment_error(error)) from error
     print_result(
         paths.modulefile,
         paths.install_root,
@@ -660,13 +698,16 @@ def deploy_env(
             make_default=make_default,
         )
 
-    result = deploy_environment(
-        spec=spec,
-        module_root=resolved_module_root,
-        prefix=resolved_prefix,
-        uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
-        dry_run=dry_run,
-    )
+    try:
+        result = deploy_environment(
+            spec=spec,
+            module_root=resolved_module_root,
+            prefix=resolved_prefix,
+            uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
+            dry_run=dry_run,
+        )
+    except DEPLOYMENT_EXCEPTIONS as error:
+        raise click.ClickException(format_deployment_error(error)) from error
     print_environment_result(result, dry_run)
 
 
@@ -746,6 +787,23 @@ def require_path(value: Path | None, label: str, option: str) -> Path:
         )
         raise click.UsageError(msg)
     return value.expanduser()
+
+
+DEPLOYMENT_EXCEPTIONS = (MissingExecutableError, OSError, subprocess.CalledProcessError)
+
+
+def format_deployment_error(error: BaseException) -> str:
+    """Return a concise CLI message for deployment failures.
+
+    Args:
+        error: Operational exception raised by the deployment layer.
+
+    Returns:
+        Human-readable error text for Click.
+    """
+    if isinstance(error, subprocess.CalledProcessError):
+        return f"Command failed with exit code {error.returncode}: {subprocess.list2cmdline(error.cmd)}"
+    return str(error)
 
 
 def require_locations(module_root: Path | None, prefix: Path | None) -> tuple[Path, Path]:

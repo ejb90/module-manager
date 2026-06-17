@@ -205,7 +205,11 @@ def test_auto_constraints_command_writes_output(monkeypatch: pytest.MonkeyPatch)
             "output_file": Path("constraints.txt"),
             "python": None,
             "indexes": ("https://packages.example/simple",),
+            "default_index": None,
             "find_links": (),
+            "no_index": False,
+            "index_strategy": None,
+            "keyring_provider": None,
             "uv_config_file": None,
             "uv_executable": None,
         }
@@ -213,6 +217,105 @@ def test_auto_constraints_command_writes_output(monkeypatch: pytest.MonkeyPatch)
     assert "constraints: constraints.txt" in result.output
     assert "discovered URL dependencies: 1" in result.output
     assert "url-dep @ file:///tmp/url-dep" in result.output
+
+
+def test_auto_constraints_command_accepts_resolver_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The auto-constraints command should expose deployment-equivalent resolver options.
+
+    Args:
+        monkeypatch: Pytest helper used to replace constraint generation.
+    """
+    runner = CliRunner()
+    calls: list[dict[str, object]] = []
+
+    def fake_generate_constraints(**kwargs: object) -> ConstraintGenerationResult:
+        """Record generation options."""
+        calls.append(kwargs)
+        return ConstraintGenerationResult(
+            output_file=Path("constraints.txt"),
+            requirements=("internal-tool",),
+            discovered_url_dependencies=(),
+            iterations=1,
+        )
+
+    monkeypatch.setattr("module_manager.cli.generate_constraints", fake_generate_constraints)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "auto-constraints",
+                "internal-tool",
+                "--default-index",
+                "https://default.example/simple",
+                "--no-index",
+                "--index-strategy",
+                "unsafe-best-match",
+                "--keyring-provider",
+                "subprocess",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert calls[0]["default_index"] == "https://default.example/simple"
+    assert calls[0]["no_index"] is True
+    assert calls[0]["index_strategy"] == "unsafe-best-match"
+    assert calls[0]["keyring_provider"] == "subprocess"
+
+
+def test_deploy_python_missing_uv_reports_click_error() -> None:
+    """Missing uv executables should be reported without a traceback."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "deploy-python",
+                "ruff",
+                "0.8.0",
+                "--package",
+                "ruff==0.8.0",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--execute-install",
+                "--uv-executable",
+                "missing-uv",
+            ],
+        )
+        install_root_exists = Path("tools/ruff/0.8.0").exists()
+
+    assert result.exit_code != 0
+    assert "Required executable not found on PATH: missing-uv" in strip_ansi(result.output)
+    assert "Traceback" not in result.output
+    assert not install_root_exists
+
+
+def test_deploy_script_missing_file_is_a_usage_error() -> None:
+    """Missing script paths should fail during option validation."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            main,
+            [
+                "deploy-script",
+                "hello",
+                "1.0.0",
+                "--script",
+                "missing.sh",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "does not exist" in strip_ansi(result.output)
+    assert "Traceback" not in result.output
 
 
 def test_cli_options_override_config_defaults() -> None:
