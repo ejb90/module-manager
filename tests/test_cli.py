@@ -35,6 +35,7 @@ def test_help_uses_rich_click_formatting() -> None:
     assert "Options" in output
     assert "Commands" in output
     assert "Examples:" in output
+    assert "[cyan]" not in output
 
 
 def test_deploy_python_command_writes_modulefile() -> None:
@@ -50,6 +51,16 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "0.8.0",
                 "--package",
                 "ruff==0.8.0",
+                "--with",
+                "ruff-lsp==0.1",
+                "--with-requirements",
+                "/prod/requirements.txt",
+                "--editable",
+                "--with-editable",
+                "ruff-lsp",
+                "--with-editable",
+                "ruff-format",
+                "--with-executables-from=ruff-lsp,ruff-format",
                 "--prefix",
                 "tools",
                 "--module-root",
@@ -67,13 +78,19 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "subprocess",
                 "--constraints",
                 "/prod/constraints.txt",
+                "--overrides",
+                "/prod/overrides.txt",
                 "--no-cache",
                 "--refresh",
                 "--refresh-package",
                 "ruff",
                 "--force",
                 "--reinstall",
-                "--uv-config-file",
+                "--lfs",
+                "-vv",
+                "--native-tls",
+                "--no-config",
+                "--config-file",
                 "/prod/uv.toml",
                 "--uv-executable",
                 "/opt/uv/bin/uv",
@@ -85,17 +102,56 @@ def test_deploy_python_command_writes_modulefile() -> None:
     assert "modulefile: modules/ruff/0.8.0" in result.output
     assert "default version: modules/ruff/.version" in result.output
     assert "--config-file /prod/uv.toml" in modulefile
-    assert "/opt/uv/bin/uv tool --config-file /prod/uv.toml install" in modulefile
+    assert "/opt/uv/bin/uv -v -v --native-tls --no-config tool --config-file /prod/uv.toml install" in modulefile
+    assert "/opt/uv/bin/uv -v -v --native-tls --no-config tool" in modulefile
     assert "--default-index https://default.example/simple" in modulefile
     assert "--no-index" in modulefile
     assert "--index-strategy unsafe-first-match" in modulefile
     assert "--keyring-provider subprocess" in modulefile
     assert "--constraints /prod/constraints.txt" in modulefile
+    assert "--with ruff-lsp==0.1" in modulefile
+    assert "--with-requirements /prod/requirements.txt" in modulefile
+    assert "--overrides /prod/overrides.txt" in modulefile
     assert "--no-cache" in modulefile
     assert "--refresh" in modulefile
     assert "--refresh-package ruff" in modulefile
     assert "--force" in modulefile
     assert "--reinstall" in modulefile
+    assert "--lfs" in modulefile
+    assert "--editable" in modulefile
+    assert "--with-editable ruff-lsp" in modulefile
+    assert "--with-editable ruff-format" in modulefile
+    assert "--with-executables-from=ruff-lsp,ruff-format" in modulefile
+
+
+def test_deploy_python_uses_project_dependencies_for_executable_sources() -> None:
+    """A bare executable-source option should read project dependencies."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        Path("pyproject.toml").write_text(
+            '[project]\ndependencies = ["click>=8.1", "rich-click>=1.8"]\n',
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            main,
+            [
+                "deploy-python",
+                "my-tool",
+                "1.0.0",
+                "--package",
+                "my-tool==1.0.0",
+                "--with-executables-from",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+        modulefile = Path("modules/my-tool/1.0.0").read_text(encoding="utf-8")
+
+    assert result.exit_code == 0
+    assert "--with-executables-from=click,rich-click" in modulefile
 
 
 def test_deploy_python_command_uses_config_defaults() -> None:
@@ -593,14 +649,24 @@ type = "python"
 name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
+with = ["ruff-lsp==0.1"]
+with_requirements = ["requirements.txt"]
 indexes = ["https://packages.example/simple"]
 default_index = "https://default.example/simple"
 no_index = true
 constraints = ["constraints.txt"]
+overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
 force = true
+lfs = true
+verbose = 2
+native_tls = true
+no_config = true
+editable = true
+with_editable = ["ruff-lsp", "ruff-format"]
+with_executables_from = ["ruff-lsp", "ruff-format"]
 uv_executable = "bin/uv"
 """.strip(),
             encoding="utf-8",
@@ -615,11 +681,20 @@ uv_executable = "bin/uv"
     assert "--default-index https://default.example/simple" in result.output
     assert "--no-index" in result.output
     assert "--constraints constraints.txt" in result.output
+    assert "--with ruff-lsp==0.1" in result.output
+    assert "--with-requirements requirements.txt" in result.output
+    assert "--overrides overrides.txt" in result.output
     assert "--no-cache" in result.output
     assert "--refresh" in result.output
     assert "--refresh-package ruff" in result.output
     assert "--force" in result.output
-    assert "bin/uv tool install" in result.output
+    assert "--lfs" in result.output
+    assert "-v -v --native-tls --no-config" in result.output
+    assert "--editable" in result.output
+    assert "--with-editable ruff-lsp" in result.output
+    assert "--with-editable ruff-format" in result.output
+    assert "--with-executables-from=ruff-lsp,ruff-format" in result.output
+    assert "bin/uv -v -v --native-tls --no-config tool install" in result.output
     assert not install_root_exists
 
 

@@ -25,6 +25,7 @@ from .deploy import (
     deploy_script_tool,
     generate_constraints,
     load_environment_spec,
+    project_dependency_names,
     uninstall_tool,
 )
 
@@ -39,6 +40,30 @@ click.rich_click.HEADER_TEXT = "module-manager"
 PATH = click.Path(path_type=Path)
 FILE_PATH = click.Path(path_type=Path, exists=True, dir_okay=False)
 ClickCommand = TypeVar("ClickCommand", bound=Command)
+AUTO_EXECUTABLES_FROM = "__module_manager_project_dependencies__"
+
+
+class OptionalValueGroup(click.RichGroup):
+    """Allow --with-executables-from to be used with or without a value."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        """Replace a bare executable-source option with its sentinel value.
+
+        Args:
+            ctx: Click parsing context.
+            args: Raw command-line arguments.
+
+        Returns:
+            Arguments normalized for Click's required-value option parser.
+        """
+        normalized: list[str] = []
+        for index, argument in enumerate(args):
+            if argument == "--with-executables-from" and (index + 1 == len(args) or args[index + 1].startswith("-")):
+                normalized.append(f"{argument}={AUTO_EXECUTABLES_FROM}")
+            else:
+                normalized.append(argument)
+        return super().parse_args(ctx, normalized)
+
 
 TOP_LEVEL_EXAMPLES = (
     "Examples:\n\n"
@@ -164,6 +189,7 @@ def location_options(command: ClickCommand) -> ClickCommand:
 
 
 @click.group(
+    cls=OptionalValueGroup,
     context_settings={"help_option_names": ["-h", "--help"]},
     help=(
         "[bold]Deploy CLI tools behind GNU environment modulefiles.[/bold]\n\n"
@@ -201,6 +227,30 @@ def main(ctx: click.Context, config: Path | None) -> None:
 )
 @common_options
 @click.option("--package", "package", required=True, help="Package spec passed to uv tool install.")
+@click.option(
+    "--with", "with_packages", multiple=True, help="Additional requirement passed to uv. May be used more than once."
+)
+@click.option(
+    "--with-requirements",
+    "with_requirements",
+    multiple=True,
+    help="Requirements file passed to uv. May be used more than once.",
+)
+@click.option("--editable", is_flag=True, help="Install the target package in editable mode.")
+@click.option(
+    "--with-editable",
+    "with_editable",
+    multiple=True,
+    help="Additional package to install in editable mode. May be used more than once.",
+)
+@click.option(
+    "--with-executables-from",
+    metavar="PACKAGES",
+    help=(
+        "Comma-separated packages whose executable entry points are installed. "
+        "Without PACKAGES, uses [project].dependencies from pyproject.toml."
+    ),
+)
 @click.option("--python", "python", help="Python interpreter/version passed to uv.")
 @click.option(
     "--index",
@@ -242,8 +292,20 @@ def main(ctx: click.Context, config: Path | None) -> None:
 )
 @click.option("--force", is_flag=True, help="Replace existing executable entries.")
 @click.option("--reinstall", is_flag=True, help="Reinstall all packages in the tool environment.")
+@click.option("--lfs", is_flag=True, help="Fetch Git LFS objects for Git package requirements.")
+@click.option("-v", "--verbose", count=True, help="Increase uv logging verbosity. May be used more than once.")
+@click.option("--native-tls", is_flag=True, help="Use the platform's native TLS certificate store.")
+@click.option("--no-config", is_flag=True, help="Prevent uv from discovering configuration files.")
+@click.option(
+    "--overrides",
+    "overrides",
+    multiple=True,
+    help="Requirements override file passed to uv. May be used more than once.",
+)
 @click.option(
     "--uv-config-file",
+    "--config-file",
+    "uv_config_file",
     type=PATH,
     help="uv.toml file passed to uv tool install with --config-file.",
 )
@@ -268,6 +330,11 @@ def deploy_python(
     homepage: str | None,
     make_default: bool,
     package: str,
+    with_packages: tuple[str, ...],
+    with_requirements: tuple[str, ...],
+    editable: bool,
+    with_editable: tuple[str, ...],
+    with_executables_from: str | None,
     python: str | None,
     indexes: tuple[str, ...],
     default_index: str | None,
@@ -281,6 +348,11 @@ def deploy_python(
     refresh_packages: tuple[str, ...],
     force: bool,
     reinstall: bool,
+    lfs: bool,
+    verbose: int,
+    native_tls: bool,
+    no_config: bool,
+    overrides: tuple[str, ...],
     uv_config_file: Path | None,
     uv_executable: Path | None,
     execute_install: bool,
@@ -297,6 +369,13 @@ def deploy_python(
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
         package: Package spec passed to `uv tool install`.
+        with_packages: Additional package requirements passed to uv.
+        with_requirements: Requirements files passed to uv.
+        editable: Whether to install the target package in editable mode.
+        with_editable: Additional packages to install in editable mode.
+        with_executables_from: Comma-separated packages whose executable entry
+            points should also be installed, or a sentinel for project
+            dependency discovery.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
         default_index: Default package index URL passed to uv.
@@ -310,6 +389,11 @@ def deploy_python(
         refresh_packages: Packages whose cached data uv should refresh.
         force: Whether uv should replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
+        lfs: Whether uv should fetch Git LFS objects for Git requirements.
+        verbose: Requested uv logging verbosity.
+        native_tls: Whether uv should use the platform's native certificate store.
+        no_config: Whether uv should skip configuration discovery.
+        overrides: Requirements override files passed to uv.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         uv_executable: Optional uv executable path.
         execute_install: Whether to run `uv tool install` immediately.
@@ -324,6 +408,14 @@ def deploy_python(
         module_root or config.module_root,
         prefix or config.prefix,
     )
+    try:
+        executable_sources = (
+            ",".join(project_dependency_names())
+            if with_executables_from == AUTO_EXECUTABLES_FROM
+            else with_executables_from
+        )
+    except (OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise click.ClickException(str(error)) from error
     try:
         paths = deploy_python_tool(
             name=name,
@@ -346,8 +438,18 @@ def deploy_python(
             refresh_packages=refresh_packages,
             force=force,
             reinstall=reinstall,
+            lfs=lfs,
+            verbose=verbose,
+            native_tls=native_tls,
+            no_config=no_config,
+            overrides=overrides,
             uv_config_file=(uv_config_file.expanduser() if uv_config_file else config.uv_config_file),
+            with_packages=with_packages,
+            with_requirements=with_requirements,
             uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
+            editable=editable,
+            with_editable=with_editable,
+            with_executables_from=executable_sources,
             execute_install=execute_install,
             make_default=make_default,
         )

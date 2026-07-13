@@ -52,6 +52,16 @@ module-manager deploy-python ruff 0.8.0 \
 Set `MODULE_MANAGER_UV_EXECUTABLE=/opt/uv/bin/uv` to use the same uv path by
 default.
 
+To expose executable entry points from direct dependencies too, add
+`--with-executables-from=package1,package2`. Used without package names, the
+option reads `[project].dependencies` from the current directory's
+`pyproject.toml`.
+
+Python deployments also pass through uv's `--with`, `--with-requirements`,
+`--constraints`, `--overrides`, `--lfs`, `--verbose`, `--native-tls`, and
+`--no-config` options. `--config-file` is accepted as an alias for
+`--uv-config-file`.
+
 Deploy a Rust binary:
 
 ```sh

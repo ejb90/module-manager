@@ -15,6 +15,7 @@ from module_manager.deploy import (
     discover_url_requirements,
     generate_constraints,
     load_environment_spec,
+    project_dependency_names,
     require_executable,
     uninstall_tool,
     uv_compile_command,
@@ -94,15 +95,37 @@ def test_python_tool_install_command_accepts_indexes() -> None:
         index_strategy="unsafe-best-match",
         keyring_provider="subprocess",
         constraints=("/prod/constraints.txt",),
+        with_packages=("internal-plugin==1",),
+        with_requirements=("/prod/requirements.txt",),
         no_cache=True,
         refresh=True,
         refresh_packages=("internal-tool",),
         force=True,
         reinstall=True,
+        lfs=True,
+        overrides=("/prod/overrides.txt",),
+        verbose=2,
+        native_tls=True,
+        no_config=True,
+        editable=True,
+        with_editable=("plugin-a", "plugin-b"),
     ) == [
         "uv",
+        "-v",
+        "-v",
+        "--native-tls",
+        "--no-config",
         "tool",
         "install",
+        "--with",
+        "internal-plugin==1",
+        "--with-requirements",
+        "/prod/requirements.txt",
+        "--editable",
+        "--with-editable",
+        "plugin-a",
+        "--with-editable",
+        "plugin-b",
         "--index",
         "https://packages.example/simple",
         "--index",
@@ -118,14 +141,55 @@ def test_python_tool_install_command_accepts_indexes() -> None:
         "subprocess",
         "--constraints",
         "/prod/constraints.txt",
+        "--overrides",
+        "/prod/overrides.txt",
         "--no-cache",
         "--refresh",
         "--refresh-package",
         "internal-tool",
         "--force",
         "--reinstall",
+        "--lfs",
         "internal-tool==1.2.3",
     ]
+
+
+def test_python_tool_install_command_accepts_executable_sources() -> None:
+    """Uv install commands should expose executables from dependencies."""
+    assert uv_install_command("my-tool==1.0.0", with_executables_from="click,rich-click") == [
+        "uv",
+        "tool",
+        "install",
+        "--with-executables-from=click,rich-click",
+        "my-tool==1.0.0",
+    ]
+
+
+def test_project_dependency_names_reads_direct_dependencies(tmp_path: Path) -> None:
+    """Project dependency names should omit versions and extras.
+
+    Args:
+        tmp_path: Temporary project root.
+    """
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        """
+[project]
+dependencies = ["click>=8.1", "rich-click[docs]>=1.8", "click>=8.1"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert project_dependency_names(pyproject) == ("click", "rich-click")
+
+
+def test_project_dependency_names_ignores_missing_pyproject(tmp_path: Path) -> None:
+    """Missing project metadata should not add executable sources.
+
+    Args:
+        tmp_path: Temporary project root without metadata.
+    """
+    assert project_dependency_names(tmp_path / "pyproject.toml") == ()
 
 
 def test_python_tool_install_command_accepts_python() -> None:
@@ -619,6 +683,8 @@ type = "python"
 name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
+with = ["ruff-lsp==0.1"]
+with_requirements = ["requirements.txt"]
 python = "3.12"
 indexes = ["https://packages.example/simple"]
 default_index = "https://default.example/simple"
@@ -627,11 +693,19 @@ no_index = true
 index_strategy = "unsafe-best-match"
 keyring_provider = "subprocess"
 constraints = ["constraints.txt", "/prod/global-constraints.txt"]
+overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
 force = true
 reinstall = true
+lfs = true
+verbose = 2
+native_tls = true
+no_config = true
+editable = true
+with_editable = ["ruff-lsp", "ruff-format"]
+with_executables_from = ["ruff-lsp", "ruff-format"]
 uv_config_file = "uv.toml"
 uv_executable = "bin/uv"
 
@@ -651,17 +725,27 @@ script = "scripts/helper"
     assert spec.module_root == Path("/prod/modulefiles")
     assert not spec.make_default
     assert spec.tools[0].package == "ruff==0.8.0"
+    assert spec.tools[0].with_packages == ("ruff-lsp==0.1",)
+    assert spec.tools[0].with_requirements == (str(tmp_path / "requirements.txt"),)
     assert spec.tools[0].indexes == ("https://packages.example/simple",)
     assert spec.tools[0].default_index == "https://default.example/simple"
     assert spec.tools[0].no_index
     assert spec.tools[0].index_strategy == "unsafe-best-match"
     assert spec.tools[0].keyring_provider == "subprocess"
     assert spec.tools[0].constraints == (str(tmp_path / "constraints.txt"), "/prod/global-constraints.txt")
+    assert spec.tools[0].overrides == (str(tmp_path / "overrides.txt"),)
     assert spec.tools[0].no_cache
     assert spec.tools[0].refresh
     assert spec.tools[0].refresh_packages == ("ruff",)
     assert spec.tools[0].force
     assert spec.tools[0].reinstall
+    assert spec.tools[0].lfs
+    assert spec.tools[0].verbose == 2
+    assert spec.tools[0].native_tls
+    assert spec.tools[0].no_config
+    assert spec.tools[0].editable
+    assert spec.tools[0].with_editable == ("ruff-lsp", "ruff-format")
+    assert spec.tools[0].with_executables_from == ("ruff-lsp", "ruff-format")
     assert spec.tools[0].uv_config_file == tmp_path / "uv.toml"
     assert spec.tools[0].uv_executable == tmp_path / "bin/uv"
     assert spec.tools[1].script == tmp_path / "scripts/helper"
@@ -790,14 +874,24 @@ version = "2026.05"
 type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
+with = ["ruff-lsp==0.1"]
+with_requirements = ["requirements.txt"]
 python = "3.12"
 default_index = "https://default.example/simple"
 no_index = true
 constraints = ["constraints.txt"]
+overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
 force = true
+lfs = true
+verbose = 2
+native_tls = true
+no_config = true
+editable = true
+with_editable = ["ruff-lsp", "ruff-format"]
+with_executables_from = ["ruff-lsp", "ruff-format"]
 uv_config_file = "uv.toml"
 """.strip(),
         encoding="utf-8",
@@ -813,10 +907,24 @@ uv_config_file = "uv.toml"
 
     assert calls[0][0] == [
         str(tmp_path / "custom-uv"),
+        "-v",
+        "-v",
+        "--native-tls",
+        "--no-config",
         "tool",
         "--config-file",
         str(tmp_path / "uv.toml"),
         "install",
+        "--with",
+        "ruff-lsp==0.1",
+        "--with-requirements",
+        str(tmp_path / "requirements.txt"),
+        "--editable",
+        "--with-editable",
+        "ruff-lsp",
+        "--with-editable",
+        "ruff-format",
+        "--with-executables-from=ruff-lsp,ruff-format",
         "--python",
         "3.12",
         "--default-index",
@@ -824,11 +932,14 @@ uv_config_file = "uv.toml"
         "--no-index",
         "--constraints",
         str(tmp_path / "constraints.txt"),
+        "--overrides",
+        str(tmp_path / "overrides.txt"),
         "--no-cache",
         "--refresh",
         "--refresh-package",
         "ruff",
         "--force",
+        "--lfs",
         "ruff==0.8.0",
     ]
     assert executable_checks == [str(tmp_path / "custom-uv")]
