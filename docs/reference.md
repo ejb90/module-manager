@@ -47,6 +47,11 @@ module-manager uninstall --help
 ```sh
 module-manager deploy-python NAME VERSION \
   --package PACKAGE \
+  [--with PACKAGE] \
+  [--with-requirements PATH] \
+  [--editable] \
+  [--with-editable PACKAGE] \
+  [--with-executables-from [PACKAGES]] \
   [--python PYTHON] \
   [--index URL] \
   [--default-index URL] \
@@ -55,11 +60,17 @@ module-manager deploy-python NAME VERSION \
   [--index-strategy STRATEGY] \
   [--keyring-provider PROVIDER] \
   [--constraints PATH] \
+  [--overrides PATH] \
   [--no-cache] \
   [--refresh] \
   [--refresh-package PACKAGE] \
   [--force] \
   [--reinstall] \
+  [--lfs] \
+  [-v|--verbose] \
+  [--native-tls] \
+  [--no-config] \
+  [--config-file PATH] \
   [--uv-config-file PATH] \
   [--uv-executable PATH] \
   [--prefix PATH] \

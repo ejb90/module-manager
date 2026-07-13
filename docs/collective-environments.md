@@ -19,6 +19,11 @@ type = "python"
 name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
+with = ["ruff-lsp==0.1"]
+with_requirements = ["requirements.txt"]
+editable = false
+with_editable = ["/src/ruff-plugin"]
+with_executables_from = ["ruff-lsp", "ruff-format"]
 python = "3.12"
 indexes = ["https://packages.example/simple"]
 default_index = "https://packages.example/simple"
@@ -26,11 +31,16 @@ find_links = ["/prod/wheels"]
 no_index = false
 index_strategy = "first-index"
 constraints = ["/prod/constraints/runtime.txt"]
+overrides = ["/prod/overrides.txt"]
 no_cache = false
 refresh = false
 refresh_packages = ["ruff"]
 force = false
 reinstall = false
+lfs = false
+verbose = 0
+native_tls = false
+no_config = false
 uv_config_file = "/prod/config/uv.toml"
 uv_executable = "/opt/uv/bin/uv"
 
@@ -81,6 +91,21 @@ module load dev-tools
 
 Relative `binary` and `script` paths are resolved relative to the manifest file.
 Relative Python `constraints` paths are resolved the same way.
+
+For a Python tool, set `with_executables_from` to expose executable entry
+points from its dependencies as well. It is a list of package names and maps to
+uv's `--with-executables-from=package1,package2` option.
+
+Set `editable = true` to install the Python tool's package in editable mode.
+Use `with_editable = ["/path/to/package"]` to add extra editable packages.
+Use `with = ["package==1"]`, `with_requirements = ["requirements.txt"]`,
+`overrides = ["overrides.txt"]`, and `lfs = true` for the corresponding uv
+options. Relative requirement and override file paths are resolved relative to
+the manifest.
+
+Set `verbose` to an integer for repeated `-v` flags. `native_tls = true` and
+`no_config = true` pass through their corresponding uv runtime controls; use
+the existing `uv_config_file` key for an explicit uv configuration file.
 
 ## Multiple Python Tools
 

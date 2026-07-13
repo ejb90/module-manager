@@ -70,6 +70,8 @@ class EnvironmentToolSpec:
         name: Tool name used for copied binaries and reporting.
         version: Optional source tool version for documentation.
         package: Python package spec passed to `uv tool install`.
+        with_packages: Additional package requirements passed to uv.
+        with_requirements: Requirements files passed to uv.
         uv_config_file: uv configuration file passed to `uv tool`.
         uv_executable: uv executable path.
         binary: Rust binary path to copy into the shared `bin` directory.
@@ -87,6 +89,15 @@ class EnvironmentToolSpec:
         refresh_packages: Packages whose cached data uv should refresh.
         force: Whether uv should replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
+        lfs: Whether uv should fetch Git LFS objects for Git requirements.
+        verbose: Requested uv logging verbosity.
+        native_tls: Whether uv should use the platform's native certificate store.
+        no_config: Whether uv should skip configuration discovery.
+        overrides: Requirements override files passed to uv.
+        editable: Whether to install the target package in editable mode.
+        with_editable: Additional packages to install in editable mode.
+        with_executables_from: Packages whose executable entry points should
+            also be installed.
         description: Optional tool description.
         homepage: Optional upstream homepage.
     """
@@ -95,6 +106,8 @@ class EnvironmentToolSpec:
     name: str
     version: str | None = None
     package: str | None = None
+    with_packages: tuple[str, ...] = ()
+    with_requirements: tuple[str, ...] = ()
     uv_config_file: Path | None = None
     uv_executable: Path | None = None
     binary: Path | None = None
@@ -112,6 +125,14 @@ class EnvironmentToolSpec:
     refresh_packages: tuple[str, ...] = ()
     force: bool = False
     reinstall: bool = False
+    lfs: bool = False
+    verbose: int = 0
+    native_tls: bool = False
+    no_config: bool = False
+    overrides: tuple[str, ...] = ()
+    editable: bool = False
+    with_editable: tuple[str, ...] = ()
+    with_executables_from: tuple[str, ...] = ()
     description: str | None = None
     homepage: str | None = None
 
@@ -172,6 +193,7 @@ class ConstraintGenerationResult:
 
 
 URL_DEPENDENCY_RE = re.compile(r"`([^`]+?\s@\s[^`]+?)`")
+PROJECT_DEPENDENCY_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 
 
 def deployment_paths(module_root: Path, prefix: Path, name: str, version: str) -> DeploymentPaths:
@@ -195,6 +217,38 @@ def deployment_paths(module_root: Path, prefix: Path, name: str, version: str) -
     )
 
 
+def project_dependency_names(pyproject_path: Path = Path("pyproject.toml")) -> tuple[str, ...]:
+    """Read direct dependency names from a project's pyproject file.
+
+    Args:
+        pyproject_path: Project metadata file to inspect.
+
+    Returns:
+        Direct dependency distribution names, in declaration order. Returns an
+        empty tuple when the project metadata file is unavailable.
+
+    Raises:
+        TypeError: If the project's dependency metadata is not a list of
+            requirement strings.
+        tomllib.TOMLDecodeError: If the project metadata is invalid TOML.
+    """
+    if not pyproject_path.is_file():
+        return ()
+
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    project = data.get("project", {})
+    dependencies = project.get("dependencies", []) if isinstance(project, dict) else []
+    if not isinstance(dependencies, list) or not all(isinstance(dependency, str) for dependency in dependencies):
+        raise TypeError("[project].dependencies must be a list of requirement strings")
+
+    names: list[str] = []
+    for dependency in dependencies:
+        match = PROJECT_DEPENDENCY_NAME_RE.match(dependency)
+        if match and match.group(1) not in names:
+            names.append(match.group(1))
+    return tuple(names)
+
+
 def uv_install_command(
     package: str,
     python: str | None = None,
@@ -212,11 +266,23 @@ def uv_install_command(
     reinstall: bool = False,
     uv_config_file: Path | None = None,
     uv_executable: Path | None = None,
+    editable: bool = False,
+    with_editable: tuple[str, ...] = (),
+    with_executables_from: str | None = None,
+    with_packages: tuple[str, ...] = (),
+    with_requirements: tuple[str, ...] = (),
+    lfs: bool = False,
+    overrides: tuple[str, ...] = (),
+    verbose: int = 0,
+    native_tls: bool = False,
+    no_config: bool = False,
 ) -> list[str]:
     """Build the uv command used to install a Python CLI tool.
 
     Args:
         package: Package spec passed to `uv tool install`.
+        with_packages: Additional package requirements passed to uv.
+        with_requirements: Requirements files passed to uv.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs.
         default_index: Default package index URL.
@@ -232,14 +298,39 @@ def uv_install_command(
         reinstall: Whether to reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         uv_executable: Optional uv executable path.
+        lfs: Whether uv should fetch Git LFS objects for Git requirements.
+        overrides: Requirements override files passed to uv.
+        verbose: Requested uv logging verbosity.
+        native_tls: Whether uv should use the platform's native certificate store.
+        no_config: Whether uv should skip configuration discovery.
+        editable: Whether to install the target package in editable mode.
+        with_editable: Additional packages to install in editable mode.
+        with_executables_from: Comma-separated packages whose executable
+            entry points should also be installed.
 
     Returns:
         Tokenized uv command suitable for `subprocess.run`.
     """
-    command = [str(uv_executable or "uv"), "tool"]
+    command = [str(uv_executable or "uv")]
+    command.extend("-v" for _ in range(verbose))
+    if native_tls:
+        command.append("--native-tls")
+    if no_config:
+        command.append("--no-config")
+    command.append("tool")
     if uv_config_file:
         command.extend(["--config-file", str(uv_config_file)])
     command.append("install")
+    for additional_package in with_packages:
+        command.extend(["--with", additional_package])
+    for requirements_file in with_requirements:
+        command.extend(["--with-requirements", requirements_file])
+    if editable:
+        command.append("--editable")
+    for editable_package in with_editable:
+        command.extend(["--with-editable", editable_package])
+    if with_executables_from:
+        command.append(f"--with-executables-from={with_executables_from}")
     if python:
         command.extend(["--python", python])
     for index in indexes:
@@ -256,6 +347,8 @@ def uv_install_command(
         command.extend(["--keyring-provider", keyring_provider])
     for constraint in constraints:
         command.extend(["--constraints", constraint])
+    for override in overrides:
+        command.extend(["--overrides", override])
     if no_cache:
         command.append("--no-cache")
     if refresh:
@@ -266,6 +359,8 @@ def uv_install_command(
         command.append("--force")
     if reinstall:
         command.append("--reinstall")
+    if lfs:
+        command.append("--lfs")
     command.append(package)
     return command
 
@@ -734,6 +829,27 @@ def optional_bool(data: dict[str, Any], key: str, default: bool) -> bool:
     raise TypeError(msg)
 
 
+def optional_nonnegative_int(data: dict[str, Any], key: str, default: int = 0) -> int:
+    """Read an optional non-negative integer from manifest data.
+
+    Args:
+        data: Manifest table.
+        key: Optional integer key.
+        default: Value to use when the key is absent.
+
+    Returns:
+        Configured integer value or the default.
+
+    Raises:
+        TypeError: If the value is not a non-negative integer.
+    """
+    value = data.get(key, default)
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    msg = f"{key} must be a non-negative integer"
+    raise TypeError(msg)
+
+
 def load_environment_spec(path: Path) -> EnvironmentSpec:
     """Load a collective environment specification from TOML.
 
@@ -797,6 +913,8 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         name=name,
         version=optional_string(data, "version"),
         package=optional_string(data, "package"),
+        with_packages=optional_string_tuple(data, "with"),
+        with_requirements=tuple(str(path) for path in optional_manifest_paths(data, "with_requirements", base_dir)),
         uv_config_file=optional_manifest_path(data, "uv_config_file", base_dir),
         uv_executable=optional_manifest_path(data, "uv_executable", base_dir),
         binary=optional_manifest_path(data, "binary", base_dir),
@@ -814,6 +932,14 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         refresh_packages=optional_string_tuple(data, "refresh_packages"),
         force=optional_bool(data, "force", False),
         reinstall=optional_bool(data, "reinstall", False),
+        lfs=optional_bool(data, "lfs", False),
+        verbose=optional_nonnegative_int(data, "verbose"),
+        native_tls=optional_bool(data, "native_tls", False),
+        no_config=optional_bool(data, "no_config", False),
+        overrides=tuple(str(path) for path in optional_manifest_paths(data, "overrides", base_dir)),
+        editable=optional_bool(data, "editable", False),
+        with_editable=optional_string_tuple(data, "with_editable"),
+        with_executables_from=optional_string_tuple(data, "with_executables_from"),
         description=optional_string(data, "description"),
         homepage=optional_string(data, "homepage"),
     )
@@ -880,21 +1006,31 @@ def environment_actions(
         if tool.tool_type == "python" and tool.package:
             command = uv_install_command(
                 tool.package,
-                tool.python,
-                tool.indexes,
-                tool.default_index,
-                tool.find_links,
-                tool.no_index,
-                tool.index_strategy,
-                tool.keyring_provider,
-                tool.constraints,
-                tool.no_cache,
-                tool.refresh,
-                tool.refresh_packages,
-                tool.force,
-                tool.reinstall,
-                tool.uv_config_file,
-                tool.uv_executable or uv_executable,
+                python=tool.python,
+                indexes=tool.indexes,
+                default_index=tool.default_index,
+                find_links=tool.find_links,
+                no_index=tool.no_index,
+                index_strategy=tool.index_strategy,
+                keyring_provider=tool.keyring_provider,
+                constraints=tool.constraints,
+                no_cache=tool.no_cache,
+                refresh=tool.refresh,
+                refresh_packages=tool.refresh_packages,
+                force=tool.force,
+                reinstall=tool.reinstall,
+                uv_config_file=tool.uv_config_file,
+                uv_executable=tool.uv_executable or uv_executable,
+                editable=tool.editable,
+                with_editable=tool.with_editable,
+                with_executables_from=",".join(tool.with_executables_from) or None,
+                with_packages=tool.with_packages,
+                with_requirements=tool.with_requirements,
+                lfs=tool.lfs,
+                overrides=tool.overrides,
+                verbose=tool.verbose,
+                native_tls=tool.native_tls,
+                no_config=tool.no_config,
             )
             actions.append(
                 f"install python {tool.name}: "
@@ -955,21 +1091,31 @@ def deploy_environment(
                 subprocess.run(
                     uv_install_command(
                         tool.package,
-                        tool.python,
-                        tool.indexes,
-                        tool.default_index,
-                        tool.find_links,
-                        tool.no_index,
-                        tool.index_strategy,
-                        tool.keyring_provider,
-                        tool.constraints,
-                        tool.no_cache,
-                        tool.refresh,
-                        tool.refresh_packages,
-                        tool.force,
-                        tool.reinstall,
-                        tool.uv_config_file,
-                        resolved_uv_executable,
+                        python=tool.python,
+                        indexes=tool.indexes,
+                        default_index=tool.default_index,
+                        find_links=tool.find_links,
+                        no_index=tool.no_index,
+                        index_strategy=tool.index_strategy,
+                        keyring_provider=tool.keyring_provider,
+                        constraints=tool.constraints,
+                        no_cache=tool.no_cache,
+                        refresh=tool.refresh,
+                        refresh_packages=tool.refresh_packages,
+                        force=tool.force,
+                        reinstall=tool.reinstall,
+                        uv_config_file=tool.uv_config_file,
+                        uv_executable=resolved_uv_executable,
+                        editable=tool.editable,
+                        with_editable=tool.with_editable,
+                        with_executables_from=",".join(tool.with_executables_from) or None,
+                        with_packages=tool.with_packages,
+                        with_requirements=tool.with_requirements,
+                        lfs=tool.lfs,
+                        overrides=tool.overrides,
+                        verbose=tool.verbose,
+                        native_tls=tool.native_tls,
+                        no_config=tool.no_config,
                     ),
                     check=True,
                     env=uv_install_environment(tool_dir, paths.bin_dir),
@@ -1007,6 +1153,8 @@ def deploy_python_tool(
     package: str,
     module_root: Path,
     prefix: Path,
+    with_packages: tuple[str, ...] = (),
+    with_requirements: tuple[str, ...] = (),
     description: str | None = None,
     homepage: str | None = None,
     python: str | None = None,
@@ -1024,6 +1172,14 @@ def deploy_python_tool(
     reinstall: bool = False,
     uv_config_file: Path | None = None,
     uv_executable: Path | None = None,
+    lfs: bool = False,
+    overrides: tuple[str, ...] = (),
+    verbose: int = 0,
+    native_tls: bool = False,
+    no_config: bool = False,
+    editable: bool = False,
+    with_editable: tuple[str, ...] = (),
+    with_executables_from: str | None = None,
     execute_install: bool = False,
     make_default: bool = True,
 ) -> DeploymentPaths:
@@ -1033,6 +1189,8 @@ def deploy_python_tool(
         name: Tool name used in install and module paths.
         version: Tool version used in install and module paths.
         package: Package spec passed to `uv tool install`.
+        with_packages: Additional package requirements passed to uv.
+        with_requirements: Requirements files passed to uv.
         module_root: Root of the environment module tree.
         prefix: Root installation prefix for deployed tools.
         description: Optional module help and `module-whatis` text.
@@ -1052,6 +1210,15 @@ def deploy_python_tool(
         reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         uv_executable: Optional uv executable path.
+        lfs: Whether uv should fetch Git LFS objects for Git requirements.
+        overrides: Requirements override files passed to uv.
+        verbose: Requested uv logging verbosity.
+        native_tls: Whether uv should use the platform's native certificate store.
+        no_config: Whether uv should skip configuration discovery.
+        editable: Whether to install the target package in editable mode.
+        with_editable: Additional packages to install in editable mode.
+        with_executables_from: Comma-separated packages whose executable
+            entry points should also be installed.
         execute_install: Whether to run `uv tool install` immediately.
         make_default: Whether to make this version the module default.
 
@@ -1071,21 +1238,31 @@ def deploy_python_tool(
         tool_dir = paths.install_root / "uv-tools"
         command = uv_install_command(
             package,
-            python,
-            indexes,
-            default_index,
-            find_links,
-            no_index,
-            index_strategy,
-            keyring_provider,
-            constraints,
-            no_cache,
-            refresh,
-            refresh_packages,
-            force,
-            reinstall,
-            uv_config_file,
-            uv_executable,
+            python=python,
+            indexes=indexes,
+            default_index=default_index,
+            find_links=find_links,
+            no_index=no_index,
+            index_strategy=index_strategy,
+            keyring_provider=keyring_provider,
+            constraints=constraints,
+            no_cache=no_cache,
+            refresh=refresh,
+            refresh_packages=refresh_packages,
+            force=force,
+            reinstall=reinstall,
+            uv_config_file=uv_config_file,
+            uv_executable=uv_executable,
+            editable=editable,
+            with_editable=with_editable,
+            with_executables_from=with_executables_from,
+            with_packages=with_packages,
+            with_requirements=with_requirements,
+            lfs=lfs,
+            overrides=overrides,
+            verbose=verbose,
+            native_tls=native_tls,
+            no_config=no_config,
         )
 
         if execute_install:

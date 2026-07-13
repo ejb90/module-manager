@@ -47,6 +47,68 @@ Deployments also make the deployed version the module default, so `module load
 ruff` resolves to `ruff/0.8.0`. Add `--no-default` to leave the current default
 unchanged.
 
+## Expose Dependency Executables
+
+By default, uv exposes executables from the installed package itself. Use
+`--with-executables-from` to also expose entry points supplied by direct
+dependencies:
+
+```sh
+module-manager deploy-python my-tool 1.0.0 \
+  --package my-tool==1.0.0 \
+  --with-executables-from=formatter,linter \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+Used without a value, `--with-executables-from` reads the current directory's
+`pyproject.toml` and passes the names in `[project].dependencies` to uv. If no
+`pyproject.toml` is available, no extra executables are requested.
+
+## Editable Installs
+
+Use `--editable` to install the target package from its source directory, so
+source edits are used without reinstalling. Add `--with-editable PACKAGE` one
+or more times for additional editable packages:
+
+```sh
+module-manager deploy-python my-tool 1.0.0 \
+  --package ./my-tool \
+  --editable \
+  --with-editable ./my-plugin \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+## Additional Requirements and Resolver Files
+
+Use `--with PACKAGE` to add an extra requirement, and
+`--with-requirements PATH` to add requirements from a file. `--constraints` and
+`--overrides` pass their requirement files directly to uv's resolver. Add
+`--lfs` when a Git package requirement needs Git LFS objects.
+
+```sh
+module-manager deploy-python my-tool 1.0.0 \
+  --package my-tool==1.0.0 \
+  --with 'my-plugin>=1.0' \
+  --with-requirements /prod/requirements/plugins.txt \
+  --constraints /prod/constraints.txt \
+  --overrides /prod/overrides.txt \
+  --lfs \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --execute-install
+```
+
+## uv Runtime Controls
+
+Use `-v` or `--verbose` repeatedly for uv diagnostics, `--native-tls` to use
+the platform certificate store, and `--no-config` to disable configuration
+discovery. `--config-file` is an alias for module-manager's existing
+`--uv-config-file` option and passes an explicit `uv.toml` file to uv.
+
 ## Deploy from a Private Index
 
 ```sh
