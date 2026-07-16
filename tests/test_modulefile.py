@@ -54,6 +54,22 @@ def test_render_modulefile_exports_path_and_root() -> None:
     assert "setenv RUFF_ROOT $root" in modulefile
 
 
+def test_render_modulefile_exports_configured_environment_variables() -> None:
+    """Rendered modulefiles should export configured environment variables."""
+    modulefile = render_modulefile(
+        ModuleSpec(
+            name="ruff",
+            version="0.8.0",
+            root=Path("/prod/tools/ruff/0.8.0"),
+            bin_dir=Path("/prod/tools/ruff/0.8.0/bin"),
+            environment=(("RUFF_CACHE_DIR", "/scratch/ruff"), ("MESSAGE", 'a "quote" $value')),
+        )
+    )
+
+    assert 'setenv RUFF_CACHE_DIR "/scratch/ruff"' in modulefile
+    assert 'setenv MESSAGE "a \\"quote\\" \\$value"' in modulefile
+
+
 def test_render_default_version_selects_version() -> None:
     """Default-version files should select the requested module version."""
     content = render_default_version("0.8.0")
@@ -678,6 +694,9 @@ prefix = "/prod/tools"
 module_root = "/prod/modulefiles"
 default = false
 
+[environment]
+DEV_TOOLS_CACHE = "/scratch/dev-tools"
+
 [[tools]]
 type = "python"
 name = "ruff"
@@ -724,6 +743,7 @@ script = "scripts/helper"
     assert spec.prefix == Path("/prod/tools")
     assert spec.module_root == Path("/prod/modulefiles")
     assert not spec.make_default
+    assert spec.environment == (("DEV_TOOLS_CACHE", "/scratch/dev-tools"),)
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].with_packages == ("ruff-lsp==0.1",)
     assert spec.tools[0].with_requirements == (str(tmp_path / "requirements.txt"),)

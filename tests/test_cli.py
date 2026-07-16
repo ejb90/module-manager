@@ -752,3 +752,98 @@ script = "{script}"
     assert ripgrep_exists
     assert hello_exists
     assert modulefile_exists
+
+
+def test_deploy_commands_export_environment_variables() -> None:
+    """Each deployment command should write requested environment variables."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        binary = Path(fs) / "rg"
+        script = Path(fs) / "hello.sh"
+        binary.write_text("binary", encoding="utf-8")
+        script.write_text("#!/usr/bin/env bash\necho hello\n", encoding="utf-8")
+        manifest = Path("env.toml")
+        manifest.write_text(
+            """
+name = "dev-tools"
+version = "2026.05"
+prefix = "tools"
+module_root = "modules"
+
+[environment]
+FROM_MANIFEST = "yes"
+
+[[tools]]
+type = "script"
+name = "hello"
+script = "hello.sh"
+""".strip(),
+            encoding="utf-8",
+        )
+        python_result = runner.invoke(
+            main,
+            [
+                "deploy-python",
+                "ruff",
+                "0.8.0",
+                "--package",
+                "ruff==0.8.0",
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--env",
+                "RUFF_CACHE_DIR=/scratch/ruff",
+            ],
+        )
+        rust_result = runner.invoke(
+            main,
+            [
+                "deploy-rust",
+                "ripgrep",
+                "14.1.1",
+                "--binary",
+                str(binary),
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--env",
+                "RIPGREP_CONFIG_PATH=/etc/rg.conf",
+            ],
+        )
+        script_result = runner.invoke(
+            main,
+            [
+                "deploy-script",
+                "hello",
+                "1.0.0",
+                "--script",
+                str(script),
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+                "--env",
+                "GREETING=hello",
+            ],
+        )
+        environment_result = runner.invoke(
+            main,
+            ["deploy-env", "--file", str(manifest), "--env", "FROM_CLI=yes"],
+        )
+        python_modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
+        rust_modulefile = Path("modules/ripgrep/14.1.1").read_text(encoding="utf-8")
+        script_modulefile = Path("modules/hello/1.0.0").read_text(encoding="utf-8")
+        environment_modulefile = Path("modules/dev-tools/2026.05").read_text(encoding="utf-8")
+
+    assert python_result.exit_code == 0
+    assert rust_result.exit_code == 0
+    assert script_result.exit_code == 0
+    assert environment_result.exit_code == 0
+    assert 'setenv RUFF_CACHE_DIR "/scratch/ruff"' in python_modulefile
+    assert 'setenv RIPGREP_CONFIG_PATH "/etc/rg.conf"' in rust_modulefile
+    assert 'setenv GREETING "hello"' in script_modulefile
+    assert 'setenv FROM_MANIFEST "yes"' in environment_modulefile
+    assert 'setenv FROM_CLI "yes"' in environment_modulefile

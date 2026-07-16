@@ -71,6 +71,10 @@ module-manager deploy-rust ripgrep 14.1.1 \
   --module-root /prod/modulefiles
 ```
 
+Add `--env NAME=VALUE` to any deploy command to export a variable from the
+generated modulefile. For `deploy-env`, variables can also be declared in the
+manifest's `[environment]` table.
+
 Generate a constraints file for a Python CLI:
 
 ```sh

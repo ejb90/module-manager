@@ -28,6 +28,7 @@ from .deploy import (
     project_dependency_names,
     uninstall_tool,
 )
+from .modulefile import parse_environment_variables
 
 click.rich_click.TEXT_MARKUP = "rich"
 click.rich_click.STYLE_COMMAND = "bold cyan"
@@ -134,6 +135,13 @@ def common_options(command: ClickCommand) -> ClickCommand:
     Returns:
         Decorated Click command function.
     """
+    command = click.option(
+        "--env",
+        "environment",
+        multiple=True,
+        metavar="NAME=VALUE",
+        help="Export an environment variable when the module loads. May be used more than once.",
+    )(command)
     command = click.option(
         "--default/--no-default",
         "make_default",
@@ -329,6 +337,7 @@ def deploy_python(
     description: str | None,
     homepage: str | None,
     make_default: bool,
+    environment: tuple[str, ...],
     package: str,
     with_packages: tuple[str, ...],
     with_requirements: tuple[str, ...],
@@ -368,6 +377,7 @@ def deploy_python(
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
+        environment: Variables in `NAME=VALUE` form exported when the module loads.
         package: Package spec passed to `uv tool install`.
         with_packages: Additional package requirements passed to uv.
         with_requirements: Requirements files passed to uv.
@@ -450,6 +460,7 @@ def deploy_python(
             editable=editable,
             with_editable=with_editable,
             with_executables_from=executable_sources,
+            environment=parse_environment_variables(environment),
             execute_install=execute_install,
             make_default=make_default,
         )
@@ -594,6 +605,7 @@ def deploy_rust(
     description: str | None,
     homepage: str | None,
     make_default: bool,
+    environment: tuple[str, ...],
     binary: Path | None,
     dry_run: bool,
 ) -> None:
@@ -608,6 +620,7 @@ def deploy_rust(
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
+        environment: Variables in `NAME=VALUE` form exported when the module loads.
         binary: Optional compiled binary to copy into the deployed `bin`
             directory.
         dry_run: Whether to report paths without mutating the filesystem.
@@ -628,6 +641,7 @@ def deploy_rust(
             binary=binary.expanduser() if binary else None,
             description=description,
             homepage=homepage,
+            environment=parse_environment_variables(environment),
             make_default=make_default,
             dry_run=dry_run,
         )
@@ -668,6 +682,7 @@ def deploy_script(
     description: str | None,
     homepage: str | None,
     make_default: bool,
+    environment: tuple[str, ...],
     script: Path | None,
     dry_run: bool,
 ) -> None:
@@ -682,6 +697,7 @@ def deploy_script(
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
+        environment: Variables in `NAME=VALUE` form exported when the module loads.
         script: Optional shell script to copy into the deployed `bin` directory.
         dry_run: Whether to report paths without mutating the filesystem.
 
@@ -701,6 +717,7 @@ def deploy_script(
             script=script.expanduser() if script else None,
             description=description,
             homepage=homepage,
+            environment=parse_environment_variables(environment),
             make_default=make_default,
             dry_run=dry_run,
         )
@@ -744,6 +761,13 @@ def deploy_script(
     help="Override whether the manifest writes a module default selector.",
 )
 @click.option(
+    "--env",
+    "environment",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help="Export an environment variable when the module loads. May be used more than once.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Print actions that would run without creating files.",
@@ -760,6 +784,7 @@ def deploy_env(
     module_root: Path | None,
     prefix: Path | None,
     make_default: bool | None,
+    environment: tuple[str, ...],
     dry_run: bool,
     uv_executable: Path | None,
 ) -> None:
@@ -772,6 +797,7 @@ def deploy_env(
             configuration.
         prefix: Optional install prefix overriding manifest and configuration.
         make_default: Optional override for manifest default behavior.
+        environment: Variables in `NAME=VALUE` form added to the modulefile.
         dry_run: Whether to report actions without mutating the filesystem.
         uv_executable: Optional uv executable path for Python tools.
 
@@ -788,7 +814,13 @@ def deploy_env(
         module_root or spec.module_root or config.module_root,
         prefix or spec.prefix or config.prefix,
     )
-    if make_default is not None:
+    if make_default is not None or environment:
+        try:
+            parsed_environment = parse_environment_variables(environment)
+        except ValueError as error:
+            raise click.ClickException(str(error)) from error
+        combined_environment = dict(spec.environment)
+        combined_environment.update(parsed_environment)
         spec = spec.__class__(
             name=spec.name,
             version=spec.version,
@@ -797,7 +829,8 @@ def deploy_env(
             module_root=spec.module_root,
             description=spec.description,
             homepage=spec.homepage,
-            make_default=make_default,
+            environment=tuple(combined_environment.items()),
+            make_default=spec.make_default if make_default is None else make_default,
         )
 
     try:
@@ -891,7 +924,7 @@ def require_path(value: Path | None, label: str, option: str) -> Path:
     return value.expanduser()
 
 
-DEPLOYMENT_EXCEPTIONS = (MissingExecutableError, OSError, subprocess.CalledProcessError)
+DEPLOYMENT_EXCEPTIONS = (MissingExecutableError, OSError, subprocess.CalledProcessError, ValueError)
 
 
 def format_deployment_error(error: BaseException) -> str:
