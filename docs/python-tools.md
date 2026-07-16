@@ -47,6 +47,19 @@ Deployments also make the deployed version the module default, so `module load
 ruff` resolves to `ruff/0.8.0`. Add `--no-default` to leave the current default
 unchanged.
 
+## Export Environment Variables
+
+Add `--env NAME=VALUE` to export a literal environment variable when the
+module loads. Repeat the option for additional variables.
+
+```sh
+module-manager deploy-python ruff 0.8.0 \
+  --package 'ruff==0.8.0' \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --env RUFF_CACHE_DIR=/scratch/ruff
+```
+
 ## Expose Dependency Executables
 
 By default, uv exposes executables from the installed package itself. Use
