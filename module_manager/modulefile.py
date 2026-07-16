@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+ENVIRONMENT_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 def tcl_quote(value: str) -> str:
@@ -20,6 +23,34 @@ def tcl_quote(value: str) -> str:
     return f'"{escaped}"'
 
 
+def parse_environment_variables(values: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    """Parse command-line environment variable assignments.
+
+    Args:
+        values: Assignments in `NAME=VALUE` form.
+
+    Returns:
+        Validated environment variable name/value pairs.
+
+    Raises:
+        ValueError: If an assignment has no equals sign, a name is invalid, or a
+            name occurs more than once.
+    """
+    variables: list[tuple[str, str]] = []
+    names: set[str] = set()
+    for value in values:
+        name, separator, variable_value = value.partition("=")
+        if not separator or not ENVIRONMENT_VARIABLE_NAME.fullmatch(name):
+            msg = f"Invalid environment variable {value!r}; use NAME=VALUE."
+            raise ValueError(msg)
+        if name in names:
+            msg = f"Environment variable {name!r} was specified more than once."
+            raise ValueError(msg)
+        names.add(name)
+        variables.append((name, variable_value))
+    return tuple(variables)
+
+
 @dataclass(frozen=True)
 class ModuleSpec:
     """Data required to render one versioned environment modulefile.
@@ -34,6 +65,7 @@ class ModuleSpec:
         homepage: Optional upstream homepage shown in `module help`.
         install_hint: Optional installation command or note shown in
             `module help`.
+        environment: Environment variables exported when the module loads.
     """
 
     name: str
@@ -44,6 +76,7 @@ class ModuleSpec:
     family: str | None = None
     homepage: str | None = None
     install_hint: str | None = None
+    environment: tuple[tuple[str, str], ...] = ()
 
     @property
     def module_path(self) -> str:
@@ -89,6 +122,8 @@ def render_modulefile(spec: ModuleSpec) -> str:
     if spec.family:
         lines.append(f"family {tcl_quote(spec.family)}")
 
+    environment = parse_environment_variables(tuple(f"{name}={value}" for name, value in spec.environment))
+
     lines.extend(
         [
             "",
@@ -97,9 +132,10 @@ def render_modulefile(spec: ModuleSpec) -> str:
             "",
             "prepend-path PATH $bindir",
             f"setenv {spec.name.upper().replace('-', '_')}_ROOT $root",
-            "",
         ]
     )
+    lines.extend(f"setenv {name} {tcl_quote(value)}" for name, value in environment)
+    lines.append("")
     return "\n".join(lines)
 
 

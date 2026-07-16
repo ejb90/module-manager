@@ -13,7 +13,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .modulefile import ModuleSpec, is_default_version, render_default_version, render_modulefile
+from .modulefile import (
+    ModuleSpec,
+    is_default_version,
+    parse_environment_variables,
+    render_default_version,
+    render_modulefile,
+)
 
 
 class MissingExecutableError(RuntimeError):
@@ -149,6 +155,7 @@ class EnvironmentSpec:
         module_root: Optional module tree root from the manifest.
         description: Optional environment module description.
         homepage: Optional homepage shown in module help.
+        environment: Environment variables exported when the module loads.
         make_default: Whether to make this environment version the default.
     """
 
@@ -159,6 +166,7 @@ class EnvironmentSpec:
     module_root: Path | None = None
     description: str | None = None
     homepage: str | None = None
+    environment: tuple[tuple[str, str], ...] = ()
     make_default: bool = True
 
 
@@ -808,6 +816,32 @@ def optional_string_tuple(data: dict[str, Any], key: str) -> tuple[str, ...]:
     raise TypeError(msg)
 
 
+def optional_environment(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Read environment variables from a collective environment manifest.
+
+    Args:
+        data: Top-level manifest data.
+
+    Returns:
+        Validated environment variable name/value pairs.
+
+    Raises:
+        TypeError: If the environment table is not a mapping of strings.
+    """
+    value = data.get("environment")
+    if value is None:
+        return ()
+    if not isinstance(value, dict) or not all(
+        isinstance(name, str) and isinstance(item, str) for name, item in value.items()
+    ):
+        msg = "environment must be a table of string values"
+        raise TypeError(msg)
+    try:
+        return parse_environment_variables(tuple(f"{name}={item}" for name, item in value.items()))
+    except ValueError as error:
+        raise TypeError(str(error)) from error
+
+
 def optional_bool(data: dict[str, Any], key: str, default: bool) -> bool:
     """Read an optional boolean from manifest data.
 
@@ -884,6 +918,7 @@ def load_environment_spec(path: Path) -> EnvironmentSpec:
         module_root=optional_manifest_path(data, "module_root"),
         description=optional_string(data, "description"),
         homepage=optional_string(data, "homepage"),
+        environment=optional_environment(data),
         make_default=optional_bool(data, "default", True),
     )
 
@@ -1136,6 +1171,7 @@ def deploy_environment(
                 description=spec.description,
                 homepage=spec.homepage,
                 install_hint=install_hint,
+                environment=spec.environment,
             )
         )
         write_text(paths.modulefile, modulefile)
@@ -1180,6 +1216,7 @@ def deploy_python_tool(
     editable: bool = False,
     with_editable: tuple[str, ...] = (),
     with_executables_from: str | None = None,
+    environment: tuple[tuple[str, str], ...] = (),
     execute_install: bool = False,
     make_default: bool = True,
 ) -> DeploymentPaths:
@@ -1219,6 +1256,7 @@ def deploy_python_tool(
         with_editable: Additional packages to install in editable mode.
         with_executables_from: Comma-separated packages whose executable
             entry points should also be installed.
+        environment: Environment variables exported when the module loads.
         execute_install: Whether to run `uv tool install` immediately.
         make_default: Whether to make this version the module default.
 
@@ -1283,6 +1321,7 @@ def deploy_python_tool(
                 description=description,
                 homepage=homepage,
                 install_hint=install_hint,
+                environment=environment,
             )
         )
         write_text(paths.modulefile, modulefile)
@@ -1302,6 +1341,7 @@ def deploy_rust_tool(
     binary: Path | None = None,
     description: str | None = None,
     homepage: str | None = None,
+    environment: tuple[tuple[str, str], ...] = (),
     make_default: bool = True,
     dry_run: bool = False,
 ) -> DeploymentPaths:
@@ -1316,6 +1356,7 @@ def deploy_rust_tool(
             directory.
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
+        environment: Environment variables exported when the module loads.
         make_default: Whether to make this version the module default.
         dry_run: Whether to report paths without mutating the filesystem.
 
@@ -1330,6 +1371,7 @@ def deploy_rust_tool(
         source=binary,
         description=description,
         homepage=homepage,
+        environment=environment,
         make_default=make_default,
         dry_run=dry_run,
         install_label="binary",
@@ -1345,6 +1387,7 @@ def deploy_copied_tool(
     source: Path | None,
     description: str | None,
     homepage: str | None,
+    environment: tuple[tuple[str, str], ...],
     make_default: bool,
     dry_run: bool,
     install_label: str,
@@ -1359,6 +1402,7 @@ def deploy_copied_tool(
         source: Optional file to copy into the deployed `bin` directory.
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
+        environment: Environment variables exported when the module loads.
         make_default: Whether to make this version the module default.
         dry_run: Whether to report paths without mutating the filesystem.
         install_label: Human-readable copied file type for module help.
@@ -1387,6 +1431,7 @@ def deploy_copied_tool(
                 description=description,
                 homepage=homepage,
                 install_hint=f"copy {install_label} to {paths.bin_dir / name}",
+                environment=environment,
             )
         )
         write_text(paths.modulefile, modulefile)
@@ -1406,6 +1451,7 @@ def deploy_script_tool(
     script: Path | None = None,
     description: str | None = None,
     homepage: str | None = None,
+    environment: tuple[tuple[str, str], ...] = (),
     make_default: bool = True,
     dry_run: bool = False,
 ) -> DeploymentPaths:
@@ -1419,6 +1465,7 @@ def deploy_script_tool(
         script: Optional shell script to copy into the deployed `bin` directory.
         description: Optional module help and `module-whatis` text.
         homepage: Optional upstream homepage shown in module help.
+        environment: Environment variables exported when the module loads.
         make_default: Whether to make this version the module default.
         dry_run: Whether to report paths without mutating the filesystem.
 
@@ -1433,6 +1480,7 @@ def deploy_script_tool(
         source=script,
         description=description,
         homepage=homepage,
+        environment=environment,
         make_default=make_default,
         dry_run=dry_run,
         install_label="script",
