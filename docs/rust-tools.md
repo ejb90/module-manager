@@ -23,6 +23,17 @@ and creates:
 
 The generated modulefile prepends the deployed `bin` directory to `PATH`.
 
+Add `--env NAME=VALUE` to export a literal environment variable when the
+module loads. The option may be repeated:
+
+```sh
+module-manager deploy-rust ripgrep 14.1.1 \
+  --binary ./target/release/rg \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --env RIPGREP_CONFIG_PATH=/etc/rg.conf
+```
+
 Deployments make the deployed version the module default, so `module load
 ripgrep` resolves to `ripgrep/14.1.1`. Add `--no-default` to leave the current
 default unchanged.
