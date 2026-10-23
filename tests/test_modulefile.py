@@ -9,6 +9,7 @@ import pytest
 import module_manager.deploy as deploy_module
 from module_manager.deploy import (
     MissingExecutableError,
+    deploy_binary_tool,
     deploy_environment,
     deploy_python_tool,
     deploy_script_tool,
@@ -23,9 +24,6 @@ from module_manager.deploy import (
     uv_install_command,
     uv_install_environment,
     verify_deployment,
-)
-from module_manager.deploy import (
-    deploy_binary_tool as deploy_rust_tool,
 )
 from module_manager.modulefile import (
     ModuleSpec,
@@ -109,7 +107,7 @@ def test_deployments_write_lockfiles_that_verify(tmp_path: Path) -> None:
     """Deployment lockfiles should record metadata and managed checksums."""
     source = tmp_path / "rg"
     source.write_text("binary", encoding="utf-8")
-    paths = deploy_rust_tool(
+    paths = deploy_binary_tool(
         name="ripgrep",
         version="14.1.1",
         module_root=tmp_path / "modules",
@@ -153,6 +151,7 @@ def test_python_lockfile_flags_then_records_later_installed_executables(tmp_path
         package="ruff==0.8.0",
         module_root=tmp_path / "modules",
         prefix=tmp_path / "tools",
+        force=True,
     )
 
     assert not verify_deployment(paths).issues
@@ -167,7 +166,7 @@ def test_lockfile_failure_preserves_previous_default_version(tmp_path: Path, mon
     """
     module_root = tmp_path / "modules"
     prefix = tmp_path / "tools"
-    deploy_rust_tool(name="ripgrep", version="14.0.0", module_root=module_root, prefix=prefix)
+    deploy_binary_tool(name="ripgrep", version="14.0.0", module_root=module_root, prefix=prefix)
 
     def fail_lockfile(*_args: object, **_kwargs: object) -> None:
         """Raise a simulated lockfile write error."""
@@ -176,7 +175,7 @@ def test_lockfile_failure_preserves_previous_default_version(tmp_path: Path, mon
     monkeypatch.setattr(deploy_module, "write_deployment_lock", fail_lockfile)
 
     with pytest.raises(OSError, match="disk full"):
-        deploy_rust_tool(name="ripgrep", version="14.1.1", module_root=module_root, prefix=prefix)
+        deploy_binary_tool(name="ripgrep", version="14.1.1", module_root=module_root, prefix=prefix)
 
     default_version = (module_root / "ripgrep" / ".version").read_text(encoding="utf-8")
     assert is_default_version(default_version, "14.0.0")
@@ -560,8 +559,8 @@ def test_failed_python_install_rolls_back_new_paths(tmp_path: Path, monkeypatch:
     assert not (tmp_path / "modules" / "ruff" / "0.8.0").exists()
 
 
-def test_deploy_rust_tool_copies_binary_and_marks_executable(tmp_path: Path) -> None:
-    """Rust deployments should copy the binary and ensure it is executable.
+def test_deploy_binary_tool_copies_binary_and_marks_executable(tmp_path: Path) -> None:
+    """Binary deployments should copy the binary and ensure it is executable.
 
     Args:
         tmp_path: Temporary deployment root.
@@ -569,7 +568,7 @@ def test_deploy_rust_tool_copies_binary_and_marks_executable(tmp_path: Path) -> 
     binary = tmp_path / "rg"
     binary.write_text("binary", encoding="utf-8")
 
-    paths = deploy_rust_tool(
+    paths = deploy_binary_tool(
         name="ripgrep",
         version="14.1.1",
         module_root=tmp_path / "modules",
@@ -583,8 +582,34 @@ def test_deploy_rust_tool_copies_binary_and_marks_executable(tmp_path: Path) -> 
     assert paths.modulefile.exists()
 
 
-def test_deploy_rust_tool_dry_run_leaves_paths_unwritten(tmp_path: Path) -> None:
-    """Dry-run Rust deployments should not write files.
+def test_deployment_requires_force_to_replace_an_existing_version(tmp_path: Path) -> None:
+    """Deployments should reject replacement until explicitly forced.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
+    source = tmp_path / "rg"
+    source.write_text("first", encoding="utf-8")
+    kwargs = {
+        "name": "ripgrep",
+        "version": "14.1.1",
+        "module_root": tmp_path / "modules",
+        "prefix": tmp_path / "tools",
+        "binary": source,
+    }
+    paths = deploy_binary_tool(**kwargs)
+    source.write_text("second", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Use --force to replace it"):
+        deploy_binary_tool(**kwargs)
+
+    deploy_binary_tool(**kwargs, force=True)
+
+    assert (paths.bin_dir / "ripgrep").read_text(encoding="utf-8") == "second"
+
+
+def test_deploy_binary_tool_dry_run_leaves_paths_unwritten(tmp_path: Path) -> None:
+    """Dry-run binary deployments should not write files.
 
     Args:
         tmp_path: Temporary deployment root.
@@ -592,7 +617,7 @@ def test_deploy_rust_tool_dry_run_leaves_paths_unwritten(tmp_path: Path) -> None
     binary = tmp_path / "rg"
     binary.write_text("binary", encoding="utf-8")
 
-    paths = deploy_rust_tool(
+    paths = deploy_binary_tool(
         name="ripgrep",
         version="14.1.1",
         module_root=tmp_path / "modules",
@@ -656,7 +681,7 @@ def test_deploy_tool_can_skip_default_version(tmp_path: Path) -> None:
     Args:
         tmp_path: Temporary deployment root.
     """
-    paths = deploy_rust_tool(
+    paths = deploy_binary_tool(
         name="ripgrep",
         version="14.1.1",
         module_root=tmp_path / "modules",
@@ -740,7 +765,7 @@ def test_uninstall_tool_dry_run_leaves_paths_in_place(tmp_path: Path) -> None:
     Args:
         tmp_path: Temporary deployment root.
     """
-    paths = deploy_rust_tool(
+    paths = deploy_binary_tool(
         name="ripgrep",
         version="14.1.1",
         module_root=tmp_path / "modules",

@@ -111,6 +111,7 @@ module-manager deploy-binary NAME VERSION \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
+  [--force] \
   [--dry-run]
 ```
 
@@ -122,6 +123,7 @@ module-manager deploy-script NAME VERSION \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
+  [--force] \
   [--dry-run]
 ```
 
@@ -133,6 +135,7 @@ module-manager deploy-env \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
+  [--force] \
   [--dry-run]
 ```
 

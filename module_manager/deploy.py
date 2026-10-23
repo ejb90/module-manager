@@ -871,6 +871,21 @@ def rollback_deployment(paths: DeploymentPaths, install_root_existed: bool, modu
         remove_path(paths.install_root)
 
 
+def require_deployment_target(paths: DeploymentPaths, force: bool) -> None:
+    """Reject replacement of an existing deployment unless explicitly forced.
+
+    Args:
+        paths: Versioned installation and modulefile paths to inspect.
+        force: Whether replacing existing deployment paths is permitted.
+
+    Raises:
+        ValueError: If a versioned installation root or modulefile already exists.
+    """
+    existing = any(path.exists() or path.is_symlink() for path in (paths.install_root, paths.modulefile))
+    if existing and not force:
+        raise ValueError("Deployment already exists. Use --force to replace it.")
+
+
 def uninstall_tool(
     *,
     name: str,
@@ -1305,6 +1320,7 @@ def deploy_environment(
     prefix: Path,
     uv_executable: Path | None = None,
     dry_run: bool = False,
+    force: bool = False,
 ) -> EnvironmentDeploymentResult:
     """Deploy or preview a collective environment.
 
@@ -1314,6 +1330,7 @@ def deploy_environment(
         prefix: Root installation prefix for deployed tools.
         uv_executable: Optional default uv executable path.
         dry_run: Whether to report actions without mutating the filesystem.
+        force: Whether to replace an existing deployment.
 
     Returns:
         Deployment result with paths and action summaries.
@@ -1324,6 +1341,8 @@ def deploy_environment(
     """
     paths = deployment_paths(module_root, prefix, spec.name, spec.version)
     actions = environment_actions(spec, paths, uv_executable)
+
+    require_deployment_target(paths, force)
 
     if dry_run:
         return EnvironmentDeploymentResult(paths=paths, actions=actions)
@@ -1475,7 +1494,8 @@ def deploy_python_tool(
         no_cache: Whether uv should avoid reading from or writing to cache.
         refresh: Whether uv should refresh cached data.
         refresh_packages: Packages whose cached data uv should refresh.
-        force: Whether uv should replace existing executable entries.
+        force: Whether to replace an existing deployment and request that uv
+            replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         uv_executable: Optional uv executable path.
@@ -1501,6 +1521,7 @@ def deploy_python_tool(
         subprocess.CalledProcessError: If `uv tool install` fails.
     """
     paths = deployment_paths(module_root, prefix, name, version)
+    require_deployment_target(paths, force)
     install_root_existed = paths.install_root.exists()
     modulefile_existed = paths.modulefile.exists()
     try:
@@ -1587,6 +1608,7 @@ def deploy_binary_tool(
     environment: tuple[tuple[str, str], ...] = (),
     make_default: bool = True,
     dry_run: bool = False,
+    force: bool = False,
 ) -> DeploymentPaths:
     """Deploy metadata for a binary tool and optionally copy its executable.
 
@@ -1602,6 +1624,7 @@ def deploy_binary_tool(
         environment: Environment variables exported when the module loads.
         make_default: Whether to make this version the module default.
         dry_run: Whether to report paths without mutating the filesystem.
+        force: Whether to replace an existing deployment.
 
     Returns:
         Paths created or targeted by the deployment.
@@ -1617,6 +1640,7 @@ def deploy_binary_tool(
         environment=environment,
         make_default=make_default,
         dry_run=dry_run,
+        force=force,
         install_label="binary",
         kind="binary",
     )
@@ -1636,6 +1660,7 @@ def deploy_copied_tool(
     dry_run: bool,
     install_label: str,
     kind: str,
+    force: bool,
 ) -> DeploymentPaths:
     """Deploy metadata for a file copied into a versioned `bin` directory.
 
@@ -1652,11 +1677,13 @@ def deploy_copied_tool(
         dry_run: Whether to report paths without mutating the filesystem.
         install_label: Human-readable copied file type for module help.
         kind: Deployment backend recorded in the lockfile.
+        force: Whether to replace an existing deployment.
 
     Returns:
         Paths created or targeted by the deployment.
     """
     paths = deployment_paths(module_root, prefix, name, version)
+    require_deployment_target(paths, force)
     if dry_run:
         return paths
 
@@ -1711,6 +1738,7 @@ def deploy_script_tool(
     environment: tuple[tuple[str, str], ...] = (),
     make_default: bool = True,
     dry_run: bool = False,
+    force: bool = False,
 ) -> DeploymentPaths:
     """Deploy metadata for a shell script and optionally copy it into `bin`.
 
@@ -1725,6 +1753,7 @@ def deploy_script_tool(
         environment: Environment variables exported when the module loads.
         make_default: Whether to make this version the module default.
         dry_run: Whether to report paths without mutating the filesystem.
+        force: Whether to replace an existing deployment.
 
     Returns:
         Paths created or targeted by the deployment.
@@ -1740,6 +1769,7 @@ def deploy_script_tool(
         environment=environment,
         make_default=make_default,
         dry_run=dry_run,
+        force=force,
         install_label="script",
         kind="script",
     )

@@ -47,6 +47,10 @@ Deployments also make the deployed version the module default, so `module load
 ruff` resolves to `ruff/0.8.0`. Add `--no-default` to leave the current default
 unchanged.
 
+Existing versions are left untouched by default. To deliberately replace an
+existing Python deployment, rerun the command with `--force`. For an immediate
+install, this also passes `--force` to `uv tool install`.
+
 ## Export Environment Variables
 
 Add `--env NAME=VALUE` to export a literal environment variable when the

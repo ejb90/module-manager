@@ -38,6 +38,9 @@ Deployments make the deployed version the module default, so `module load
 ripgrep` resolves to `ripgrep/14.1.1`. Add `--no-default` to leave the current
 default unchanged.
 
+Existing versions are left untouched by default. To deliberately replace an
+existing binary deployment, rerun the command with `--force`.
+
 Preview the paths that would be written without copying the binary:
 
 ```sh
