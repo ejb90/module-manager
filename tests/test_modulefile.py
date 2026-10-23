@@ -153,6 +153,7 @@ def test_python_lockfile_flags_then_records_later_installed_executables(tmp_path
         package="ruff==0.8.0",
         module_root=tmp_path / "modules",
         prefix=tmp_path / "tools",
+        force=True,
     )
 
     assert not verify_deployment(paths).issues
@@ -581,6 +582,32 @@ def test_deploy_binary_tool_copies_binary_and_marks_executable(tmp_path: Path) -
     assert deployed.exists()
     assert deployed.stat().st_mode & 0o111
     assert paths.modulefile.exists()
+
+
+def test_deployment_requires_force_to_replace_an_existing_version(tmp_path: Path) -> None:
+    """Deployments should reject replacement until explicitly forced.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
+    source = tmp_path / "rg"
+    source.write_text("first", encoding="utf-8")
+    kwargs = {
+        "name": "ripgrep",
+        "version": "14.1.1",
+        "module_root": tmp_path / "modules",
+        "prefix": tmp_path / "tools",
+        "binary": source,
+    }
+    paths = deploy_binary_tool(**kwargs)
+    source.write_text("second", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Use --force to replace it"):
+        deploy_binary_tool(**kwargs)
+
+    deploy_binary_tool(**kwargs, force=True)
+
+    assert (paths.bin_dir / "ripgrep").read_text(encoding="utf-8") == "second"
 
 
 def test_deploy_binary_tool_dry_run_leaves_paths_unwritten(tmp_path: Path) -> None:

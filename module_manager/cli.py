@@ -303,7 +303,11 @@ def main(ctx: click.Context, config: Path | None) -> None:
     multiple=True,
     help="Refresh cached data for a package. May be used more than once.",
 )
-@click.option("--force", is_flag=True, help="Replace existing executable entries.")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Replace an existing deployment and executable entries.",
+)
 @click.option("--reinstall", is_flag=True, help="Reinstall all packages in the tool environment.")
 @click.option("--lfs", is_flag=True, help="Fetch Git LFS objects for Git package requirements.")
 @click.option("-v", "--verbose", count=True, help="Increase uv logging verbosity. May be used more than once.")
@@ -402,7 +406,8 @@ def deploy_python(
         no_cache: Whether uv should avoid reading from or writing to cache.
         refresh: Whether uv should refresh cached data.
         refresh_packages: Packages whose cached data uv should refresh.
-        force: Whether uv should replace existing executable entries.
+        force: Whether to replace an existing deployment and request that uv
+            replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
         lfs: Whether uv should fetch Git LFS objects for Git requirements.
         verbose: Requested uv logging verbosity.
@@ -590,6 +595,7 @@ def auto_constraints(
     epilog=DEPLOY_BINARY_EXAMPLES,
 )
 @common_options
+@click.option("--force", is_flag=True, help="Replace an existing deployment version.")
 @click.option(
     "--binary",
     type=FILE_PATH,
@@ -611,6 +617,7 @@ def deploy_binary(
     homepage: str | None,
     make_default: bool,
     environment: tuple[str, ...],
+    force: bool,
     binary: Path | None,
     dry_run: bool,
 ) -> None:
@@ -626,6 +633,7 @@ def deploy_binary(
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
         environment: Variables in `NAME=VALUE` form exported when the module loads.
+        force: Whether to replace an existing deployment.
         binary: Optional compiled binary to copy into the deployed `bin`
             directory.
         dry_run: Whether to report paths without mutating the filesystem.
@@ -649,6 +657,7 @@ def deploy_binary(
             environment=parse_environment_variables(environment),
             make_default=make_default,
             dry_run=dry_run,
+            force=force,
         )
     except DEPLOYMENT_EXCEPTIONS as error:
         raise click.ClickException(format_deployment_error(error)) from error
@@ -667,6 +676,7 @@ def deploy_binary(
     epilog=DEPLOY_SCRIPT_EXAMPLES,
 )
 @common_options
+@click.option("--force", is_flag=True, help="Replace an existing deployment version.")
 @click.option(
     "--script",
     type=FILE_PATH,
@@ -688,6 +698,7 @@ def deploy_script(
     homepage: str | None,
     make_default: bool,
     environment: tuple[str, ...],
+    force: bool,
     script: Path | None,
     dry_run: bool,
 ) -> None:
@@ -703,6 +714,7 @@ def deploy_script(
         homepage: Optional upstream homepage shown in module help.
         make_default: Whether to make this version the module default.
         environment: Variables in `NAME=VALUE` form exported when the module loads.
+        force: Whether to replace an existing deployment.
         script: Optional shell script to copy into the deployed `bin` directory.
         dry_run: Whether to report paths without mutating the filesystem.
 
@@ -725,6 +737,7 @@ def deploy_script(
             environment=parse_environment_variables(environment),
             make_default=make_default,
             dry_run=dry_run,
+            force=force,
         )
     except DEPLOYMENT_EXCEPTIONS as error:
         raise click.ClickException(format_deployment_error(error)) from error
@@ -777,6 +790,7 @@ def deploy_script(
     is_flag=True,
     help="Print actions that would run without creating files.",
 )
+@click.option("--force", is_flag=True, help="Replace an existing deployment version.")
 @click.option(
     "--uv-executable",
     type=PATH,
@@ -792,6 +806,7 @@ def deploy_env(
     environment: tuple[str, ...],
     dry_run: bool,
     uv_executable: Path | None,
+    force: bool,
 ) -> None:
     """Deploy a collective environment from a TOML manifest.
 
@@ -805,6 +820,7 @@ def deploy_env(
         environment: Variables in `NAME=VALUE` form added to the modulefile.
         dry_run: Whether to report actions without mutating the filesystem.
         uv_executable: Optional uv executable path for Python tools.
+        force: Whether to replace an existing deployment.
 
     Raises:
         click.ClickException: If the manifest cannot be parsed.
@@ -845,6 +861,7 @@ def deploy_env(
             prefix=resolved_prefix,
             uv_executable=(uv_executable.expanduser() if uv_executable else config.uv_executable),
             dry_run=dry_run,
+            force=force,
         )
     except DEPLOYMENT_EXCEPTIONS as error:
         raise click.ClickException(format_deployment_error(error)) from error

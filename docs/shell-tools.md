@@ -39,6 +39,9 @@ Deployments make the deployed version the module default, so `module load
 my-tool` resolves to `my-tool/1.0.0`. Add `--no-default` to leave the current
 default unchanged.
 
+Existing versions are left untouched by default. To deliberately replace an
+existing script deployment, rerun the command with `--force`.
+
 Preview the paths that would be written without copying the script:
 
 ```sh

@@ -433,6 +433,37 @@ def test_deploy_binary_command_copies_binary() -> None:
     assert "modulefile: modules/ripgrep/14.1.1" in result.output
 
 
+def test_deploy_binary_command_requires_force_to_replace_a_version() -> None:
+    """The CLI should require --force before replacing a deployment."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        binary = Path(fs) / "rg"
+        binary.write_text("first", encoding="utf-8")
+        arguments = [
+            "deploy-binary",
+            "ripgrep",
+            "14.1.1",
+            "--binary",
+            str(binary),
+            "--prefix",
+            "tools",
+            "--module-root",
+            "modules",
+        ]
+        first = runner.invoke(main, arguments)
+        rejected = runner.invoke(main, arguments)
+        binary.write_text("second", encoding="utf-8")
+        replaced = runner.invoke(main, [*arguments, "--force"])
+        deployed = Path("tools/ripgrep/14.1.1/bin/ripgrep").read_text(encoding="utf-8")
+
+    assert first.exit_code == 0
+    assert rejected.exit_code != 0
+    assert "Use --force to replace it" in strip_ansi(rejected.output)
+    assert replaced.exit_code == 0
+    assert deployed == "second"
+
+
 def test_deploy_binary_command_dry_run_does_not_write_files() -> None:
     """Dry-run binary deployment should report paths without creating them."""
     runner = CliRunner()

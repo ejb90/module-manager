@@ -221,6 +221,9 @@ creating files:
 module-manager deploy-env --file dev-tools.toml --dry-run
 ```
 
+Existing environment versions are left untouched by default. Add `--force` to
+deliberately replace one.
+
 ## Overrides
 
 The manifest can define `prefix`, `module_root`, and `default`, but CLI options

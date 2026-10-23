@@ -112,6 +112,9 @@ module-manager deploy-env --file dev-tools.toml --dry-run
 module-manager deploy-env --file dev-tools.toml
 ```
 
+Deploying an existing name and version is refused by default. Add `--force` to
+replace that deployment deliberately.
+
 Use the generated module:
 
 ```sh
