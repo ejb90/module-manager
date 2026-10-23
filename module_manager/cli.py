@@ -84,6 +84,17 @@ class OptionalValueGroup(click.RichGroup):
             cmd_name = "deploy-binary"
         return super().get_command(ctx, cmd_name)
 
+    def list_commands(self, _ctx: click.Context) -> list[str]:
+        """Return only registered command names for help output.
+
+        Args:
+            ctx: Click context used to list subcommands.
+
+        Returns:
+            Sorted visible command names.
+        """
+        return sorted(self.commands)
+
 
 TOP_LEVEL_EXAMPLES = (
     "Examples:\n\n"
