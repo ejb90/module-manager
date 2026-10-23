@@ -1,7 +1,7 @@
 # Collective Environments
 
 Collective environments package several tools behind one modulefile. Use them
-when a shared workflow needs Python CLIs, Rust binaries, and shell scripts to
+when a shared workflow needs Python CLIs, binaries, and shell scripts to
 appear together from one `module load`.
 
 Create a TOML manifest:
@@ -48,7 +48,7 @@ uv_config_file = "/prod/config/uv.toml"
 uv_executable = "/opt/uv/bin/uv"
 
 [[tools]]
-type = "rust"
+type = "binary"
 name = "ripgrep"
 version = "14.1.1"
 binary = "./target/release/rg"

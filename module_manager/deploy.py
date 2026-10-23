@@ -1,4 +1,4 @@
-"""Deployment routines for Python, Rust, and shell command-line tools."""
+"""Deployment routines for Python, binary, and shell command-line tools."""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ class EnvironmentToolSpec:
     """One tool entry in a collective environment manifest.
 
     Attributes:
-        tool_type: Tool backend, such as `python`, `rust`, or `script`.
+        tool_type: Tool backend, such as `python`, `binary`, or `script`.
         name: Tool name used for copied binaries and reporting.
         version: Optional source tool version for documentation.
         package: Python package spec passed to `uv tool install`.
@@ -117,7 +117,7 @@ class EnvironmentToolSpec:
         with_requirements: Requirements files passed to uv.
         uv_config_file: uv configuration file passed to `uv tool`.
         uv_executable: uv executable path.
-        binary: Rust binary path to copy into the shared `bin` directory.
+        binary: Executable binary path to copy into the shared `bin` directory.
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
@@ -1217,9 +1217,9 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
             msg = f"tools[{index}].keyring_provider must be one of: {', '.join(VALID_KEYRING_PROVIDERS)}"
             raise TypeError(msg)
         return
-    if tool.tool_type == "rust":
+    if tool.tool_type in {"binary", "rust"}:
         if not tool.binary:
-            msg = f"tools[{index}].binary is required for rust tools"
+            msg = f"tools[{index}].binary is required for binary tools"
             raise TypeError(msg)
         return
     if tool.tool_type == "script":
@@ -1227,7 +1227,7 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
             msg = f"tools[{index}].script is required for script tools"
             raise TypeError(msg)
         return
-    msg = f"tools[{index}].type must be one of: python, rust, script"
+    msg = f"tools[{index}].type must be one of: python, binary, script"
     raise TypeError(msg)
 
 
@@ -1287,8 +1287,8 @@ def environment_actions(
                 f"UV_TOOL_BIN_DIR={shlex.quote(str(paths.bin_dir))} "
                 f"{shlex.join(command)}"
             )
-        elif tool.tool_type == "rust" and tool.binary:
-            actions.append(f"copy rust {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
+        elif tool.tool_type in {"binary", "rust"} and tool.binary:
+            actions.append(f"copy binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
         elif tool.tool_type == "script" and tool.script:
             actions.append(f"copy script {tool.name}: {tool.script} -> {paths.bin_dir / tool.name}")
 
@@ -1369,7 +1369,7 @@ def deploy_environment(
                     check=True,
                     env=uv_install_environment(tool_dir, paths.bin_dir),
                 )
-            elif tool.tool_type == "rust" and tool.binary:
+            elif tool.tool_type in {"binary", "rust"} and tool.binary:
                 copy_executable(tool.binary, paths.bin_dir / tool.name)
             elif tool.tool_type == "script" and tool.script:
                 copy_executable(tool.script, paths.bin_dir / tool.name)
@@ -1575,7 +1575,7 @@ def deploy_python_tool(
     return paths
 
 
-def deploy_rust_tool(
+def deploy_binary_tool(
     *,
     name: str,
     version: str,
@@ -1588,7 +1588,7 @@ def deploy_rust_tool(
     make_default: bool = True,
     dry_run: bool = False,
 ) -> DeploymentPaths:
-    """Deploy metadata for a Rust tool and optionally copy its binary.
+    """Deploy metadata for a binary tool and optionally copy its executable.
 
     Args:
         name: Tool name used in install and module paths.
@@ -1618,8 +1618,11 @@ def deploy_rust_tool(
         make_default=make_default,
         dry_run=dry_run,
         install_label="binary",
-        kind="rust",
+        kind="binary",
     )
+
+
+deploy_rust_tool = deploy_binary_tool
 
 
 def deploy_copied_tool(

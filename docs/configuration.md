@@ -56,7 +56,7 @@ the environment.
 CLI options override both environment variables and TOML config:
 
 ```sh
-module-manager deploy-rust ripgrep 14.1.1 \
+module-manager deploy-binary ripgrep 14.1.1 \
   --prefix /scratch/tools \
   --module-root /scratch/modulefiles
 ```

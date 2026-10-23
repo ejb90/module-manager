@@ -392,7 +392,7 @@ module_root = "config-modules"
             [
                 "--config",
                 str(config),
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--prefix",
@@ -406,8 +406,8 @@ module_root = "config-modules"
     assert "modulefile: cli-modules/ripgrep/14.1.1" in result.output
 
 
-def test_deploy_rust_command_copies_binary() -> None:
-    """The Rust deploy command should copy the binary and report the modulefile."""
+def test_deploy_binary_command_copies_binary() -> None:
+    """The binary deploy command should copy the binary and report the modulefile."""
     runner = CliRunner()
 
     with runner.isolated_filesystem() as fs:
@@ -416,7 +416,7 @@ def test_deploy_rust_command_copies_binary() -> None:
         result = runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--binary",
@@ -890,10 +890,10 @@ def test_list_show_and_verify_commands_use_deployment_lockfiles() -> None:
         )
 
     assert deploy_result.exit_code == 0
-    assert list_result.output == "ripgrep\t14.1.1\trust\n"
+    assert list_result.output == "ripgrep\t14.1.1\tbinary\n"
     assert malformed_list_result.exit_code == 0
     assert malformed_list_result.output == list_result.output
-    assert '"kind": "rust"' in show_result.output
+    assert '"kind": "binary"' in show_result.output
     assert verify_result.exit_code == 0
     assert "verified: ripgrep/14.1.1" in verify_result.output
     assert failed_verify_result.exit_code != 0

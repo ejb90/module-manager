@@ -1,9 +1,9 @@
-# Rust Tools
+# Binary Tools
 
-Rust CLIs can be copied directly into the versioned prefix.
+Compiled or downloaded CLI binaries can be copied directly into the versioned prefix.
 
 ```sh
-module-manager deploy-rust ripgrep 14.1.1 \
+module-manager deploy-binary ripgrep 14.1.1 \
   --binary ./target/release/rg \
   --prefix /prod/tools \
   --module-root /prod/modulefiles
@@ -23,11 +23,13 @@ and creates:
 
 The generated modulefile prepends the deployed `bin` directory to `PATH`.
 
+`deploy-rust` remains available as a compatibility alias; use `deploy-binary` for new deployments.
+
 Add `--env NAME=VALUE` to export a literal environment variable when the
 module loads. The option may be repeated:
 
 ```sh
-module-manager deploy-rust ripgrep 14.1.1 \
+module-manager deploy-binary ripgrep 14.1.1 \
   --binary ./target/release/rg \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
@@ -41,7 +43,7 @@ default unchanged.
 Preview the paths that would be written without copying the binary:
 
 ```sh
-module-manager deploy-rust ripgrep 14.1.1 \
+module-manager deploy-binary ripgrep 14.1.1 \
   --binary ./target/release/rg \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \

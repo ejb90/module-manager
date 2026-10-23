@@ -117,7 +117,7 @@ def test_deployments_write_lockfiles_that_verify(tmp_path: Path) -> None:
 
     record = load_deployment_lock(paths)
 
-    assert record.data["kind"] == "rust"
+    assert record.data["kind"] == "binary"
     assert record.data["metadata"]["source"] == str(source)
     assert "modulefile" in record.data["artifacts"]
     assert not verify_deployment(paths).issues
