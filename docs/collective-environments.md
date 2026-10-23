@@ -14,6 +14,9 @@ prefix = "/prod/tools"
 module_root = "/prod/modulefiles"
 default = true
 
+[environment]
+DEV_TOOLS_CACHE = "/scratch/dev-tools"
+
 [[tools]]
 type = "python"
 name = "ruff"
@@ -87,6 +90,15 @@ tools in the manifest are available after:
 ```sh
 module use /prod/modulefiles
 module load dev-tools
+```
+
+The top-level `[environment]` table exports literal environment variables when
+the collective module loads. You can add or override values at deployment time
+with repeatable `--env NAME=VALUE` options; command-line values take precedence
+over variables in the manifest.
+
+```sh
+module-manager deploy-env --file dev-tools.toml --env RUST_BACKTRACE=1
 ```
 
 Relative `binary` and `script` paths are resolved relative to the manifest file.
