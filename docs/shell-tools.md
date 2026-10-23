@@ -24,6 +24,17 @@ and creates:
 The deployed script is marked executable, and the generated modulefile prepends
 the deployed `bin` directory to `PATH`.
 
+Add `--env NAME=VALUE` to export a literal environment variable when the
+module loads. The option may be repeated:
+
+```sh
+module-manager deploy-script my-tool 1.0.0 \
+  --script ./scripts/my-tool \
+  --prefix /prod/tools \
+  --module-root /prod/modulefiles \
+  --env MY_TOOL_CONFIG=/etc/my-tool.toml
+```
+
 Deployments make the deployed version the module default, so `module load
 my-tool` resolves to `my-tool/1.0.0`. Add `--no-default` to leave the current
 default unchanged.
