@@ -42,6 +42,14 @@ Show uninstall options:
 module-manager uninstall --help
 ```
 
+Show deployment inspection options:
+
+```sh
+module-manager list --help
+module-manager show --help
+module-manager verify --help
+```
+
 ## Python Command
 
 ```sh
@@ -136,4 +144,18 @@ module-manager uninstall NAME VERSION \
   [--module-root PATH] \
   [--keep-default] \
   [--dry-run]
+```
+
+## Inspection Commands
+
+```sh
+module-manager list [--prefix PATH]
+
+module-manager show NAME VERSION \
+  [--prefix PATH] \
+  [--module-root PATH]
+
+module-manager verify NAME VERSION \
+  [--prefix PATH] \
+  [--module-root PATH]
 ```

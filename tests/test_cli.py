@@ -847,3 +847,54 @@ script = "hello.sh"
     assert 'setenv GREETING "hello"' in script_modulefile
     assert 'setenv FROM_MANIFEST "yes"' in environment_modulefile
     assert 'setenv FROM_CLI "yes"' in environment_modulefile
+
+
+def test_list_show_and_verify_commands_use_deployment_lockfiles() -> None:
+    """Inspection commands should report and validate recorded deployments."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        binary = Path(fs) / "rg"
+        binary.write_text("binary", encoding="utf-8")
+        deploy_result = runner.invoke(
+            main,
+            [
+                "deploy-rust",
+                "ripgrep",
+                "14.1.1",
+                "--binary",
+                str(binary),
+                "--prefix",
+                "tools",
+                "--module-root",
+                "modules",
+            ],
+        )
+        list_result = runner.invoke(main, ["list", "--prefix", "tools"])
+        malformed_lockfile = Path("tools/broken/1.0.0/module-manager.lock.json")
+        malformed_lockfile.parent.mkdir(parents=True)
+        malformed_lockfile.write_text('{"format_version": 1}\n', encoding="utf-8")
+        malformed_list_result = runner.invoke(main, ["list", "--prefix", "tools"])
+        show_result = runner.invoke(
+            main,
+            ["show", "ripgrep", "14.1.1", "--prefix", "tools", "--module-root", "modules"],
+        )
+        verify_result = runner.invoke(
+            main,
+            ["verify", "ripgrep", "14.1.1", "--prefix", "tools", "--module-root", "modules"],
+        )
+        Path("modules/ripgrep/14.1.1").write_text("changed", encoding="utf-8")
+        failed_verify_result = runner.invoke(
+            main,
+            ["verify", "ripgrep", "14.1.1", "--prefix", "tools", "--module-root", "modules"],
+        )
+
+    assert deploy_result.exit_code == 0
+    assert list_result.output == "ripgrep\t14.1.1\trust\n"
+    assert malformed_list_result.exit_code == 0
+    assert malformed_list_result.output == list_result.output
+    assert '"kind": "rust"' in show_result.output
+    assert verify_result.exit_code == 0
+    assert "verified: ripgrep/14.1.1" in verify_result.output
+    assert failed_verify_result.exit_code != 0
+    assert "checksum mismatch" in failed_verify_result.output
