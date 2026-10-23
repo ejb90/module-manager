@@ -9,6 +9,7 @@ import pytest
 import module_manager.deploy as deploy_module
 from module_manager.deploy import (
     MissingExecutableError,
+    deploy_binary_tool,
     deploy_environment,
     deploy_python_tool,
     deploy_script_tool,
@@ -23,9 +24,6 @@ from module_manager.deploy import (
     uv_install_command,
     uv_install_environment,
     verify_deployment,
-)
-from module_manager.deploy import (
-    deploy_binary_tool as deploy_binary_tool,
 )
 from module_manager.modulefile import (
     ModuleSpec,
