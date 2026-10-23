@@ -34,6 +34,7 @@ def test_help_uses_rich_click_formatting() -> None:
     assert result.exit_code == 0
     assert "Options" in output
     assert "Commands" in output
+    assert output.count("deploy-binary      Copy a CLI binary") == 1
     assert "Examples:" in output
     assert "[cyan]" not in output
 
