@@ -64,36 +64,13 @@ class OptionalValueGroup(click.RichGroup):
         """
         normalized: list[str] = []
         for index, argument in enumerate(args):
-            if argument == "--with-executables-from" and (index + 1 == len(args) or args[index + 1].startswith("-")):
+            if argument == "deploy-rust":
+                normalized.append("deploy-binary")
+            elif argument == "--with-executables-from" and (index + 1 == len(args) or args[index + 1].startswith("-")):
                 normalized.append(f"{argument}={AUTO_EXECUTABLES_FROM}")
             else:
                 normalized.append(argument)
         return super().parse_args(ctx, normalized)
-
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
-        """Resolve the retired Rust command name without advertising it.
-
-        Args:
-            ctx: Click context used to resolve the subcommand.
-            cmd_name: Requested subcommand name.
-
-        Returns:
-            Registered command matching the requested or compatibility name.
-        """
-        if cmd_name == "deploy-rust":
-            cmd_name = "deploy-binary"
-        return super().get_command(ctx, cmd_name)
-
-    def list_commands(self, _ctx: click.Context) -> list[str]:
-        """Return only registered command names for help output.
-
-        Args:
-            ctx: Click context used to list subcommands.
-
-        Returns:
-            Sorted visible command names.
-        """
-        return sorted(self.commands)
 
 
 TOP_LEVEL_EXAMPLES = (
