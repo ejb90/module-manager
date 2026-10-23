@@ -1622,9 +1622,6 @@ def deploy_binary_tool(
     )
 
 
-deploy_rust_tool = deploy_binary_tool
-
-
 def deploy_copied_tool(
     *,
     name: str,

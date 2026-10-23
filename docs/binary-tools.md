@@ -23,8 +23,6 @@ and creates:
 
 The generated modulefile prepends the deployed `bin` directory to `PATH`.
 
-`deploy-rust` remains available as a compatibility alias; use `deploy-binary` for new deployments.
-
 Add `--env NAME=VALUE` to export a literal environment variable when the
 module loads. The option may be repeated:
 

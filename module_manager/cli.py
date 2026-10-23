@@ -70,6 +70,20 @@ class OptionalValueGroup(click.RichGroup):
                 normalized.append(argument)
         return super().parse_args(ctx, normalized)
 
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        """Resolve the retired Rust command name without advertising it.
+
+        Args:
+            ctx: Click context used to resolve the subcommand.
+            cmd_name: Requested subcommand name.
+
+        Returns:
+            Registered command matching the requested or compatibility name.
+        """
+        if cmd_name == "deploy-rust":
+            cmd_name = "deploy-binary"
+        return super().get_command(ctx, cmd_name)
+
 
 TOP_LEVEL_EXAMPLES = (
     "Examples:\n\n"
@@ -659,9 +673,6 @@ def deploy_binary(
         paths.default_version_file if make_default else None,
         dry_run,
     )
-
-
-main.add_command(deploy_binary, "deploy-rust")
 
 
 @main.command(

@@ -44,7 +44,7 @@ nav:
   - Installation: installation.md
   - Configuration: configuration.md
   - Python Tools: python-tools.md
-  - Binary Tools: rust-tools.md
+  - Binary Tools: binary-tools.md
   - Shell Scripts: shell-tools.md
   - Collective Environments: collective-environments.md
   - Uninstall: uninstall.md

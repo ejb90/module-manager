@@ -49,7 +49,7 @@ ruff --version
 - Install prerequisites in [Installation](installation.md).
 - Set shared defaults in [Configuration](configuration.md).
 - Deploy Python packages with [Python Tools](python-tools.md).
-- Deploy compiled or downloaded executables with [Binary Tools](rust-tools.md).
+- Deploy compiled or downloaded executables with [Binary Tools](binary-tools.md).
 - Deploy shell scripts with [Shell Scripts](shell-tools.md).
 - Deploy shared tool bundles with [Collective Environments](collective-environments.md).
 - Remove deployed versions with [Uninstall](uninstall.md).

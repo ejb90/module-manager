@@ -11,7 +11,6 @@ from module_manager.deploy import (
     MissingExecutableError,
     deploy_environment,
     deploy_python_tool,
-    deploy_rust_tool,
     deploy_script_tool,
     discover_url_requirements,
     generate_constraints,
@@ -24,6 +23,9 @@ from module_manager.deploy import (
     uv_install_command,
     uv_install_environment,
     verify_deployment,
+)
+from module_manager.deploy import (
+    deploy_binary_tool as deploy_rust_tool,
 )
 from module_manager.modulefile import (
     ModuleSpec,
