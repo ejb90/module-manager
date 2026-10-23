@@ -38,7 +38,7 @@ loaded. Values are treated literally, so shell expansion is not performed by
 the modulefile.
 
 ```sh
-module-manager deploy-rust ripgrep 14.1.1 \
+module-manager deploy-binary ripgrep 14.1.1 \
   --binary ./target/release/rg \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \

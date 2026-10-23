@@ -1,5 +1,5 @@
 site_name: module-manager
-site_description: Deploy Python, Rust, shell, and collective CLI environments behind GNU environment modulefiles.
+site_description: Deploy Python, binary, shell, and collective CLI environments behind GNU environment modulefiles.
 repo_url: https://github.com/ellis/module-manager
 
 theme:
@@ -44,7 +44,7 @@ nav:
   - Installation: installation.md
   - Configuration: configuration.md
   - Python Tools: python-tools.md
-  - Rust Tools: rust-tools.md
+  - Binary Tools: binary-tools.md
   - Shell Scripts: shell-tools.md
   - Collective Environments: collective-environments.md
   - Uninstall: uninstall.md

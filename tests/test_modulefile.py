@@ -11,7 +11,6 @@ from module_manager.deploy import (
     MissingExecutableError,
     deploy_environment,
     deploy_python_tool,
-    deploy_rust_tool,
     deploy_script_tool,
     discover_url_requirements,
     generate_constraints,
@@ -24,6 +23,9 @@ from module_manager.deploy import (
     uv_install_command,
     uv_install_environment,
     verify_deployment,
+)
+from module_manager.deploy import (
+    deploy_binary_tool as deploy_rust_tool,
 )
 from module_manager.modulefile import (
     ModuleSpec,
@@ -117,7 +119,7 @@ def test_deployments_write_lockfiles_that_verify(tmp_path: Path) -> None:
 
     record = load_deployment_lock(paths)
 
-    assert record.data["kind"] == "rust"
+    assert record.data["kind"] == "binary"
     assert record.data["metadata"]["source"] == str(source)
     assert "modulefile" in record.data["artifacts"]
     assert not verify_deployment(paths).issues
@@ -865,7 +867,7 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
             "package is required",
         ),
         (
-            'name = "x"\nversion = "1"\n[[tools]]\ntype = "rust"\nname = "rg"',
+            'name = "x"\nversion = "1"\n[[tools]]\ntype = "binary"\nname = "rg"',
             "binary is required",
         ),
         (
@@ -916,7 +918,7 @@ name = "dev-tools"
 version = "2026.05"
 
 [[tools]]
-type = "rust"
+type = "binary"
 name = "ripgrep"
 binary = "{binary}"
 

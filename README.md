@@ -8,7 +8,7 @@
 [![PyPI](https://img.shields.io/pypi/v/env-module-manager)](https://pypi.org/project/env-module-manager/)
 [![Python versions](https://img.shields.io/pypi/pyversions/env-module-manager)](https://pypi.org/project/env-module-manager/)
 
-`module-manager` deploys versioned Python, Rust, shell, and collective CLI
+`module-manager` deploys versioned Python, binary, shell, and collective CLI
 environments behind GNU environment modulefiles for Linux/HPC systems.
 
 It writes tools and modulefiles into predictable versioned locations:
@@ -62,10 +62,10 @@ Python deployments also pass through uv's `--with`, `--with-requirements`,
 `--no-config` options. `--config-file` is accepted as an alias for
 `--uv-config-file`.
 
-Deploy a Rust binary:
+Deploy a binary:
 
 ```sh
-module-manager deploy-rust ripgrep 14.1.1 \
+module-manager deploy-binary ripgrep 14.1.1 \
   --binary ./target/release/rg \
   --prefix /prod/tools \
   --module-root /prod/modulefiles

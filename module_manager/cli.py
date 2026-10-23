@@ -20,9 +20,9 @@ from .deploy import (
     EnvironmentDeploymentResult,
     MissingExecutableError,
     UninstallResult,
+    deploy_binary_tool,
     deploy_environment,
     deploy_python_tool,
-    deploy_rust_tool,
     deploy_script_tool,
     deployment_paths,
     generate_constraints,
@@ -75,7 +75,7 @@ TOP_LEVEL_EXAMPLES = (
     "Examples:\n\n"
     "[cyan]module-manager deploy-python ruff 0.8.0 --package ruff==0.8.0 "
     "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
-    "[cyan]module-manager deploy-rust ripgrep 14.1.1 --binary ./target/release/rg "
+    "[cyan]module-manager deploy-binary ripgrep 14.1.1 --binary ./target/release/rg "
     "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
     "[cyan]module-manager deploy-script my-tool 1.0.0 --script ./scripts/my-tool "
     "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
@@ -92,11 +92,11 @@ DEPLOY_PYTHON_EXAMPLES = (
     "--uv-config-file /prod/config/uv.toml --prefix /prod/tools --module-root /prod/modulefiles[/cyan]"
 )
 
-DEPLOY_RUST_EXAMPLES = (
+DEPLOY_BINARY_EXAMPLES = (
     "Examples:\n\n"
-    "[cyan]module-manager deploy-rust ripgrep 14.1.1 --binary ./target/release/rg "
+    "[cyan]module-manager deploy-binary ripgrep 14.1.1 --binary ./target/release/rg "
     "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
-    "[cyan]module-manager deploy-rust ripgrep 14.1.1 --binary ./target/release/rg "
+    "[cyan]module-manager deploy-binary ripgrep 14.1.1 --binary ./target/release/rg "
     "--prefix /prod/tools --module-root /prod/modulefiles --dry-run[/cyan]"
 )
 
@@ -206,7 +206,7 @@ def location_options(command: ClickCommand) -> ClickCommand:
     context_settings={"help_option_names": ["-h", "--help"]},
     help=(
         "[bold]Deploy CLI tools behind GNU environment modulefiles.[/bold]\n\n"
-        "Build versioned modulefiles for Python tools, Rust binaries, shell scripts, "
+        "Build versioned modulefiles for Python tools, binaries, shell scripts, "
         "and collective environments."
     ),
     epilog=TOP_LEVEL_EXAMPLES,
@@ -223,7 +223,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
     """[bold]Deploy CLI tools behind GNU environment modulefiles.[/bold].
 
     Build versioned modulefiles for Python tools installed with
-    [cyan]uv tool install[/cyan], Rust binaries, and shell scripts copied into
+    [cyan]uv tool install[/cyan], binaries, and shell scripts copied into
     a production prefix.
 
     Args:
@@ -585,9 +585,9 @@ def auto_constraints(
 
 
 @main.command(
-    "deploy-rust",
-    help="Copy a Rust CLI binary and write a modulefile for it.",
-    epilog=DEPLOY_RUST_EXAMPLES,
+    "deploy-binary",
+    help="Copy a CLI binary and write a modulefile for it.",
+    epilog=DEPLOY_BINARY_EXAMPLES,
 )
 @common_options
 @click.option(
@@ -601,7 +601,7 @@ def auto_constraints(
     help="Print paths that would be written without creating files.",
 )
 @click.pass_obj
-def deploy_rust(
+def deploy_binary(
     config: AppConfig,
     name: str,
     version: str,
@@ -614,7 +614,7 @@ def deploy_rust(
     binary: Path | None,
     dry_run: bool,
 ) -> None:
-    """Copy a Rust CLI binary and write a modulefile for it.
+    """Copy a CLI binary and write a modulefile for it.
 
     Args:
         config: Resolved application configuration from the Click context.
@@ -638,7 +638,7 @@ def deploy_rust(
         prefix or config.prefix,
     )
     try:
-        paths = deploy_rust_tool(
+        paths = deploy_binary_tool(
             name=name,
             version=version,
             module_root=resolved_module_root,

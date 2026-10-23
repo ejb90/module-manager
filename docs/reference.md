@@ -12,10 +12,10 @@ Show Python deployment options:
 module-manager deploy-python --help
 ```
 
-Show Rust deployment options:
+Show binary deployment options:
 
 ```sh
-module-manager deploy-rust --help
+module-manager deploy-binary --help
 ```
 
 Show shell script deployment options:
@@ -103,10 +103,10 @@ module-manager auto-constraints PACKAGE \
   [--uv-executable PATH]
 ```
 
-## Rust Command
+## Binary Command
 
 ```sh
-module-manager deploy-rust NAME VERSION \
+module-manager deploy-binary NAME VERSION \
   [--binary PATH] \
   [--prefix PATH] \
   [--module-root PATH] \
