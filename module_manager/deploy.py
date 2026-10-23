@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import shlex
@@ -11,7 +13,7 @@ import subprocess
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .modulefile import (
     ModuleSpec,
@@ -50,6 +52,15 @@ class DeploymentPaths:
     modulefile: Path
     default_version_file: Path | None = None
 
+    @property
+    def lockfile(self) -> Path:
+        """Return the deployment lockfile path.
+
+        Returns:
+            JSON lockfile stored in the versioned installation root.
+        """
+        return self.install_root / "module-manager.lock.json"
+
 
 @dataclass(frozen=True)
 class UninstallResult:
@@ -65,6 +76,32 @@ class UninstallResult:
     paths: DeploymentPaths
     removed: tuple[Path, ...]
     default_version_removed: bool
+
+
+@dataclass(frozen=True)
+class DeploymentRecord:
+    """Persisted metadata for a deployed tool or collective environment.
+
+    Attributes:
+        data: JSON-compatible lockfile data.
+        path: Filesystem path of the loaded lockfile.
+    """
+
+    data: dict[str, Any]
+    path: Path
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    """Result of checking a deployment against its lockfile.
+
+    Attributes:
+        paths: Deployment paths that were checked.
+        issues: Detected missing paths or checksum mismatches.
+    """
+
+    paths: DeploymentPaths
+    issues: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -561,6 +598,183 @@ def write_text(path: Path, content: str) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    """Return a file's SHA-256 checksum.
+
+    Args:
+        path: File to hash.
+
+    Returns:
+        Lowercase hexadecimal SHA-256 digest.
+    """
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def deployment_artifacts(paths: DeploymentPaths) -> dict[str, str]:
+    """Collect checksums for files managed by one deployment.
+
+    Args:
+        paths: Deployment paths whose modulefile and executables are tracked.
+
+    Returns:
+        Mapping of lockfile-relative artifact names to SHA-256 checksums.
+    """
+    artifacts = {"modulefile": sha256_file(paths.modulefile)}
+    if paths.bin_dir.exists():
+        for path in sorted(paths.bin_dir.iterdir()):
+            if path.is_file():
+                artifacts[f"bin/{path.name}"] = sha256_file(path)
+    return artifacts
+
+
+def write_deployment_lock(
+    paths: DeploymentPaths,
+    *,
+    name: str,
+    version: str,
+    kind: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Write a JSON lockfile recording a completed deployment.
+
+    Args:
+        paths: Completed deployment paths.
+        name: Deployed module name.
+        version: Deployed module version.
+        kind: Deployment backend, such as `python` or `environment`.
+        metadata: Backend-specific, JSON-compatible deployment details.
+    """
+    data = {
+        "format_version": 1,
+        "name": name,
+        "version": version,
+        "kind": kind,
+        "paths": {
+            "install_root": str(paths.install_root),
+            "bin_dir": str(paths.bin_dir),
+            "modulefile": str(paths.modulefile),
+        },
+        "metadata": metadata,
+        "artifacts": deployment_artifacts(paths),
+    }
+    write_text(paths.lockfile, json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+
+def validate_deployment_lock(data: object, path: Path) -> dict[str, Any]:
+    """Validate deployment lockfile data and return the parsed mapping.
+
+    Args:
+        data: JSON value decoded from a deployment lockfile.
+        path: Source lockfile path used in validation errors.
+
+    Returns:
+        Validated lockfile data.
+
+    Raises:
+        ValueError: If the lockfile has an unsupported or incomplete shape.
+    """
+    if not isinstance(data, dict) or data.get("format_version") != 1:
+        msg = f"Unsupported deployment lockfile: {path}"
+        raise ValueError(msg)
+    if not all(isinstance(data.get(key), str) and data[key] for key in ("name", "version", "kind")):
+        msg = f"Incomplete deployment lockfile: {path}"
+        raise ValueError(msg)
+    paths = data.get("paths")
+    if not isinstance(paths, dict) or not all(
+        isinstance(paths.get(key), str) and paths[key] for key in ("install_root", "bin_dir", "modulefile")
+    ):
+        msg = f"Incomplete deployment lockfile: {path}"
+        raise ValueError(msg)
+    artifacts = data.get("artifacts")
+    if not isinstance(artifacts, dict) or not all(
+        isinstance(artifact, str) and isinstance(checksum, str) for artifact, checksum in artifacts.items()
+    ):
+        msg = f"Deployment lockfile has invalid artifact checksums: {path}"
+        raise ValueError(msg)
+    if "modulefile" not in artifacts:
+        msg = f"Deployment lockfile has no modulefile checksum: {path}"
+        raise ValueError(msg)
+    return cast(dict[str, Any], data)
+
+
+def load_deployment_lock(paths: DeploymentPaths) -> DeploymentRecord:
+    """Load and validate one deployment lockfile.
+
+    Args:
+        paths: Deployment paths containing the lockfile.
+
+    Returns:
+        Parsed lockfile record.
+
+    Raises:
+        ValueError: If the lockfile is missing or has an unsupported shape.
+    """
+    if not paths.lockfile.is_file():
+        msg = f"Deployment lockfile not found: {paths.lockfile}"
+        raise ValueError(msg)
+    try:
+        data = json.loads(paths.lockfile.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        msg = f"Invalid deployment lockfile: {paths.lockfile}"
+        raise ValueError(msg) from error
+    return DeploymentRecord(data=validate_deployment_lock(data, paths.lockfile), path=paths.lockfile)
+
+
+def list_deployments(prefix: Path) -> tuple[DeploymentRecord, ...]:
+    """Return all readable deployment lockfiles below an installation prefix.
+
+    Args:
+        prefix: Root installation prefix to scan.
+
+    Returns:
+        Deployment records ordered by name and version.
+    """
+    records = []
+    for lockfile in prefix.glob("*/*/module-manager.lock.json"):
+        try:
+            data = json.loads(lockfile.read_text(encoding="utf-8"))
+            data = validate_deployment_lock(data, lockfile)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        records.append(DeploymentRecord(data=data, path=lockfile))
+    return tuple(sorted(records, key=lambda record: (str(record.data.get("name")), str(record.data.get("version")))))
+
+
+def verify_deployment(paths: DeploymentPaths) -> VerificationResult:
+    """Check a deployment's tracked artifacts against its lockfile.
+
+    Args:
+        paths: Deployment paths to verify.
+
+    Returns:
+        Verification result containing all detected issues.
+    """
+    record = load_deployment_lock(paths)
+    issues = []
+    artifacts = record.data["artifacts"]
+    for artifact, expected in artifacts.items():
+        if artifact == "modulefile":
+            path = paths.modulefile
+        elif artifact.startswith("bin/") and "/" not in artifact.removeprefix("bin/"):
+            path = paths.install_root / artifact
+        else:
+            issues.append(f"invalid artifact path in lockfile: {artifact}")
+            continue
+        if not path.is_file():
+            issues.append(f"missing artifact: {path}")
+        elif not isinstance(expected, str) or sha256_file(path) != expected:
+            issues.append(f"checksum mismatch: {path}")
+    if paths.bin_dir.is_dir():
+        for path in sorted(paths.bin_dir.iterdir()):
+            if path.is_file() and f"bin/{path.name}" not in artifacts:
+                issues.append(f"unexpected artifact: {path}")
+    return VerificationResult(paths=paths, issues=tuple(issues))
 
 
 def require_executable(name: str) -> str:
@@ -1175,6 +1389,24 @@ def deploy_environment(
             )
         )
         write_text(paths.modulefile, modulefile)
+        write_deployment_lock(
+            paths,
+            name=spec.name,
+            version=spec.version,
+            kind="environment",
+            metadata={
+                "environment": dict(spec.environment),
+                "tools": [
+                    {
+                        "name": tool.name,
+                        "type": tool.tool_type,
+                        "version": tool.version,
+                        "package": tool.package,
+                    }
+                    for tool in spec.tools
+                ],
+            },
+        )
         write_default_version(paths, spec.version, spec.make_default)
     except Exception:
         rollback_deployment(paths, install_root_existed, modulefile_existed)
@@ -1325,6 +1557,17 @@ def deploy_python_tool(
             )
         )
         write_text(paths.modulefile, modulefile)
+        write_deployment_lock(
+            paths,
+            name=name,
+            version=version,
+            kind="python",
+            metadata={
+                "package": package,
+                "uv_command": command,
+                "environment": dict(environment),
+            },
+        )
         write_default_version(paths, version, make_default)
     except Exception:
         rollback_deployment(paths, install_root_existed, modulefile_existed)
@@ -1375,6 +1618,7 @@ def deploy_rust_tool(
         make_default=make_default,
         dry_run=dry_run,
         install_label="binary",
+        kind="rust",
     )
 
 
@@ -1391,6 +1635,7 @@ def deploy_copied_tool(
     make_default: bool,
     dry_run: bool,
     install_label: str,
+    kind: str,
 ) -> DeploymentPaths:
     """Deploy metadata for a file copied into a versioned `bin` directory.
 
@@ -1406,6 +1651,7 @@ def deploy_copied_tool(
         make_default: Whether to make this version the module default.
         dry_run: Whether to report paths without mutating the filesystem.
         install_label: Human-readable copied file type for module help.
+        kind: Deployment backend recorded in the lockfile.
 
     Returns:
         Paths created or targeted by the deployment.
@@ -1435,6 +1681,17 @@ def deploy_copied_tool(
             )
         )
         write_text(paths.modulefile, modulefile)
+        write_deployment_lock(
+            paths,
+            name=name,
+            version=version,
+            kind=kind,
+            metadata={
+                "environment": dict(environment),
+                "source": str(source) if source else None,
+                "source_sha256": sha256_file(source) if source else None,
+            },
+        )
         write_default_version(paths, version, make_default)
     except Exception:
         rollback_deployment(paths, install_root_existed, modulefile_existed)
@@ -1484,4 +1741,5 @@ def deploy_script_tool(
         make_default=make_default,
         dry_run=dry_run,
         install_label="script",
+        kind="script",
     )

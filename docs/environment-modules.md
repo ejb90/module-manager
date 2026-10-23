@@ -73,6 +73,27 @@ default, that selector is left alone.
 Collective environments use the same modulefile behavior, but the versioned
 `bin` directory contains every tool listed in the manifest.
 
+Each completed deployment also writes
+`<prefix>/<name>/<version>/module-manager.lock.json`. The lockfile records the
+deployment metadata and SHA-256 checksums for the generated modulefile and
+executables.
+
+`verify` reports missing, modified, or unexpected executables in the managed
+`bin` directory. For a Python deployment created without `--execute-install`,
+run the displayed `uv tool install` command and then rerun `deploy-python` to
+record its installed executables in the lockfile.
+
+## Inspect Deployments
+
+List recorded deployments, show their lockfile metadata, or verify that the
+tracked files still match their recorded checksums:
+
+```sh
+module-manager list --prefix /prod/tools
+module-manager show ruff 0.8.0 --prefix /prod/tools --module-root /prod/modulefiles
+module-manager verify ruff 0.8.0 --prefix /prod/tools --module-root /prod/modulefiles
+```
+
 For collective environments, define variables in the manifest's
 `[environment]` table, or add them on the command line with `--env`. Command
 line values take precedence over a manifest variable with the same name.

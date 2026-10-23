@@ -75,6 +75,11 @@ Add `--env NAME=VALUE` to any deploy command to export a variable from the
 generated modulefile. For `deploy-env`, variables can also be declared in the
 manifest's `[environment]` table.
 
+Every completed deployment includes a `module-manager.lock.json` file with its
+metadata and generated-file checksums. Use `module-manager list --prefix PATH`,
+`module-manager show NAME VERSION`, and `module-manager verify NAME VERSION` to
+inspect recorded deployments and detect missing, modified, or unexpected files.
+
 Generate a constraints file for a Python CLI:
 
 ```sh

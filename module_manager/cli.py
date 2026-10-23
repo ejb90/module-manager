@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tomllib
 from pathlib import Path
@@ -23,10 +24,14 @@ from .deploy import (
     deploy_python_tool,
     deploy_rust_tool,
     deploy_script_tool,
+    deployment_paths,
     generate_constraints,
+    list_deployments,
+    load_deployment_lock,
     load_environment_spec,
     project_dependency_names,
     uninstall_tool,
+    verify_deployment,
 )
 from .modulefile import parse_environment_variables
 
@@ -844,6 +849,88 @@ def deploy_env(
     except DEPLOYMENT_EXCEPTIONS as error:
         raise click.ClickException(format_deployment_error(error)) from error
     print_environment_result(result, dry_run)
+
+
+@main.command("list", help="List deployments recorded below an installation prefix.")
+@click.option(
+    "--prefix",
+    type=PATH,
+    help="Root installation prefix, for example /prod/tools.",
+)
+@click.pass_obj
+def list_command(config: AppConfig, prefix: Path | None) -> None:
+    """List recorded deployments in a tabular form.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        prefix: Optional install prefix overriding configuration.
+
+    Raises:
+        click.UsageError: If no installation prefix is configured.
+    """
+    resolved_prefix = require_path(prefix or config.prefix, "installation prefix", "--prefix")
+    records = list_deployments(resolved_prefix)
+    if not records:
+        click.echo("no deployments found")
+        return
+    for record in records:
+        click.echo(f"{record.data['name']}\t{record.data['version']}\t{record.data['kind']}")
+
+
+@main.command("show", help="Show the lockfile metadata for one deployment.")
+@location_options
+@click.pass_obj
+def show(config: AppConfig, name: str, version: str, module_root: Path | None, prefix: Path | None) -> None:
+    """Show one deployment's lockfile data as JSON.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        name: Deployed module name.
+        version: Deployed module version.
+        module_root: Optional module tree root overriding configuration.
+        prefix: Optional install prefix overriding configuration.
+
+    Raises:
+        click.ClickException: If the deployment lockfile cannot be read.
+    """
+    resolved_module_root, resolved_prefix = require_locations(
+        module_root or config.module_root,
+        prefix or config.prefix,
+    )
+    try:
+        record = load_deployment_lock(deployment_paths(resolved_module_root, resolved_prefix, name, version))
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(json.dumps(record.data, indent=2, sort_keys=True))
+
+
+@main.command("verify", help="Verify deployed files against their lockfile checksums.")
+@location_options
+@click.pass_obj
+def verify(config: AppConfig, name: str, version: str, module_root: Path | None, prefix: Path | None) -> None:
+    """Verify a deployment's modulefile and executables.
+
+    Args:
+        config: Resolved application configuration from the Click context.
+        name: Deployed module name.
+        version: Deployed module version.
+        module_root: Optional module tree root overriding configuration.
+        prefix: Optional install prefix overriding configuration.
+
+    Raises:
+        click.ClickException: If the lockfile is missing or verification fails.
+    """
+    resolved_module_root, resolved_prefix = require_locations(
+        module_root or config.module_root,
+        prefix or config.prefix,
+    )
+    try:
+        result = verify_deployment(deployment_paths(resolved_module_root, resolved_prefix, name, version))
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
+    if result.issues:
+        raise click.ClickException("\n".join(result.issues))
+    click.echo(f"verified: {name}/{version}")
 
 
 @main.command(

@@ -6,6 +6,7 @@ from shlex import quote as shlex_quote
 
 import pytest
 
+import module_manager.deploy as deploy_module
 from module_manager.deploy import (
     MissingExecutableError,
     deploy_environment,
@@ -14,6 +15,7 @@ from module_manager.deploy import (
     deploy_script_tool,
     discover_url_requirements,
     generate_constraints,
+    load_deployment_lock,
     load_environment_spec,
     project_dependency_names,
     require_executable,
@@ -21,6 +23,7 @@ from module_manager.deploy import (
     uv_compile_command,
     uv_install_command,
     uv_install_environment,
+    verify_deployment,
 )
 from module_manager.modulefile import (
     ModuleSpec,
@@ -98,6 +101,83 @@ def test_deploy_python_tool_writes_modulefile(tmp_path: Path) -> None:
     assert paths.default_version_file is not None
     assert 'set ModulesVersion "0.8.0"' in paths.default_version_file.read_text(encoding="utf-8")
     assert "UV_TOOL_DIR=" in paths.modulefile.read_text(encoding="utf-8")
+
+
+def test_deployments_write_lockfiles_that_verify(tmp_path: Path) -> None:
+    """Deployment lockfiles should record metadata and managed checksums."""
+    source = tmp_path / "rg"
+    source.write_text("binary", encoding="utf-8")
+    paths = deploy_rust_tool(
+        name="ripgrep",
+        version="14.1.1",
+        module_root=tmp_path / "modules",
+        prefix=tmp_path / "tools",
+        binary=source,
+    )
+
+    record = load_deployment_lock(paths)
+
+    assert record.data["kind"] == "rust"
+    assert record.data["metadata"]["source"] == str(source)
+    assert "modulefile" in record.data["artifacts"]
+    assert not verify_deployment(paths).issues
+
+    paths.modulefile.write_text("changed", encoding="utf-8")
+
+    assert f"checksum mismatch: {paths.modulefile}" in verify_deployment(paths).issues
+
+
+def test_python_lockfile_flags_then_records_later_installed_executables(tmp_path: Path) -> None:
+    """Python deployments should not silently accept later unrecorded executables.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
+    paths = deploy_python_tool(
+        name="ruff",
+        version="0.8.0",
+        package="ruff==0.8.0",
+        module_root=tmp_path / "modules",
+        prefix=tmp_path / "tools",
+    )
+    executable = paths.bin_dir / "ruff"
+    executable.write_text("binary", encoding="utf-8")
+
+    assert f"unexpected artifact: {executable}" in verify_deployment(paths).issues
+
+    deploy_python_tool(
+        name="ruff",
+        version="0.8.0",
+        package="ruff==0.8.0",
+        module_root=tmp_path / "modules",
+        prefix=tmp_path / "tools",
+    )
+
+    assert not verify_deployment(paths).issues
+
+
+def test_lockfile_failure_preserves_previous_default_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed lockfile write must not select an incomplete deployment.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        monkeypatch: Pytest fixture for replacing the lockfile writer.
+    """
+    module_root = tmp_path / "modules"
+    prefix = tmp_path / "tools"
+    deploy_rust_tool(name="ripgrep", version="14.0.0", module_root=module_root, prefix=prefix)
+
+    def fail_lockfile(*_args: object, **_kwargs: object) -> None:
+        """Raise a simulated lockfile write error."""
+        raise OSError("disk full")
+
+    monkeypatch.setattr(deploy_module, "write_deployment_lock", fail_lockfile)
+
+    with pytest.raises(OSError, match="disk full"):
+        deploy_rust_tool(name="ripgrep", version="14.1.1", module_root=module_root, prefix=prefix)
+
+    default_version = (module_root / "ripgrep" / ".version").read_text(encoding="utf-8")
+    assert is_default_version(default_version, "14.0.0")
 
 
 def test_python_tool_install_command_accepts_indexes() -> None:
