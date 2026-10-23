@@ -433,8 +433,8 @@ def test_deploy_binary_command_copies_binary() -> None:
     assert "modulefile: modules/ripgrep/14.1.1" in result.output
 
 
-def test_deploy_rust_command_dry_run_does_not_write_files() -> None:
-    """Dry-run Rust deployment should report paths without creating them."""
+def test_deploy_binary_command_dry_run_does_not_write_files() -> None:
+    """Dry-run binary deployment should report paths without creating them."""
     runner = CliRunner()
 
     with runner.isolated_filesystem() as fs:
@@ -798,7 +798,7 @@ script = "hello.sh"
                 "RUFF_CACHE_DIR=/scratch/ruff",
             ],
         )
-        rust_result = runner.invoke(
+        binary_result = runner.invoke(
             main,
             [
                 "deploy-binary",
@@ -835,16 +835,16 @@ script = "hello.sh"
             ["deploy-env", "--file", str(manifest), "--env", "FROM_CLI=yes"],
         )
         python_modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
-        rust_modulefile = Path("modules/ripgrep/14.1.1").read_text(encoding="utf-8")
+        binary_modulefile = Path("modules/ripgrep/14.1.1").read_text(encoding="utf-8")
         script_modulefile = Path("modules/hello/1.0.0").read_text(encoding="utf-8")
         environment_modulefile = Path("modules/dev-tools/2026.05").read_text(encoding="utf-8")
 
     assert python_result.exit_code == 0
-    assert rust_result.exit_code == 0
+    assert binary_result.exit_code == 0
     assert script_result.exit_code == 0
     assert environment_result.exit_code == 0
     assert 'setenv RUFF_CACHE_DIR "/scratch/ruff"' in python_modulefile
-    assert 'setenv RIPGREP_CONFIG_PATH "/etc/rg.conf"' in rust_modulefile
+    assert 'setenv RIPGREP_CONFIG_PATH "/etc/rg.conf"' in binary_modulefile
     assert 'setenv GREETING "hello"' in script_modulefile
     assert 'setenv FROM_MANIFEST "yes"' in environment_modulefile
     assert 'setenv FROM_CLI "yes"' in environment_modulefile

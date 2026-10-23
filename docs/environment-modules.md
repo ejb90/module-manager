@@ -43,7 +43,7 @@ module-manager deploy-binary ripgrep 14.1.1 \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
   --env RIPGREP_CONFIG_PATH=/etc/rg.conf \
-  --env RUST_BACKTRACE=1
+  --env PAGER=less
 ```
 
 ## Default Versions

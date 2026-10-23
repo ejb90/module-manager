@@ -98,7 +98,7 @@ with repeatable `--env NAME=VALUE` options; command-line values take precedence
 over variables in the manifest.
 
 ```sh
-module-manager deploy-env --file dev-tools.toml --env RUST_BACKTRACE=1
+module-manager deploy-env --file dev-tools.toml --env PAGER=less
 ```
 
 Relative `binary` and `script` paths are resolved relative to the manifest file.
