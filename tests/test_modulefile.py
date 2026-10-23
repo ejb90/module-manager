@@ -867,7 +867,7 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
             "package is required",
         ),
         (
-            'name = "x"\nversion = "1"\n[[tools]]\ntype = "rust"\nname = "rg"',
+            'name = "x"\nversion = "1"\n[[tools]]\ntype = "binary"\nname = "rg"',
             "binary is required",
         ),
         (
@@ -918,7 +918,7 @@ name = "dev-tools"
 version = "2026.05"
 
 [[tools]]
-type = "rust"
+type = "binary"
 name = "ripgrep"
 binary = "{binary}"
 

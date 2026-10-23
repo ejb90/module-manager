@@ -64,9 +64,7 @@ class OptionalValueGroup(click.RichGroup):
         """
         normalized: list[str] = []
         for index, argument in enumerate(args):
-            if argument == "deploy-rust":
-                normalized.append("deploy-binary")
-            elif argument == "--with-executables-from" and (index + 1 == len(args) or args[index + 1].startswith("-")):
+            if argument == "--with-executables-from" and (index + 1 == len(args) or args[index + 1].startswith("-")):
                 normalized.append(f"{argument}={AUTO_EXECUTABLES_FROM}")
             else:
                 normalized.append(argument)

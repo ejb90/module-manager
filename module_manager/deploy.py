@@ -1217,7 +1217,7 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
             msg = f"tools[{index}].keyring_provider must be one of: {', '.join(VALID_KEYRING_PROVIDERS)}"
             raise TypeError(msg)
         return
-    if tool.tool_type in {"binary", "rust"}:
+    if tool.tool_type == "binary":
         if not tool.binary:
             msg = f"tools[{index}].binary is required for binary tools"
             raise TypeError(msg)
@@ -1287,7 +1287,7 @@ def environment_actions(
                 f"UV_TOOL_BIN_DIR={shlex.quote(str(paths.bin_dir))} "
                 f"{shlex.join(command)}"
             )
-        elif tool.tool_type in {"binary", "rust"} and tool.binary:
+        elif tool.tool_type == "binary" and tool.binary:
             actions.append(f"copy binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
         elif tool.tool_type == "script" and tool.script:
             actions.append(f"copy script {tool.name}: {tool.script} -> {paths.bin_dir / tool.name}")
@@ -1369,7 +1369,7 @@ def deploy_environment(
                     check=True,
                     env=uv_install_environment(tool_dir, paths.bin_dir),
                 )
-            elif tool.tool_type in {"binary", "rust"} and tool.binary:
+            elif tool.tool_type == "binary" and tool.binary:
                 copy_executable(tool.binary, paths.bin_dir / tool.name)
             elif tool.tool_type == "script" and tool.script:
                 copy_executable(tool.script, paths.bin_dir / tool.name)

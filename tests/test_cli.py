@@ -34,7 +34,6 @@ def test_help_uses_rich_click_formatting() -> None:
     assert result.exit_code == 0
     assert "Options" in output
     assert "Commands" in output
-    assert "deploy-rust" not in output
     assert "Examples:" in output
     assert "[cyan]" not in output
 
@@ -443,7 +442,7 @@ def test_deploy_rust_command_dry_run_does_not_write_files() -> None:
         result = runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--binary",
@@ -535,7 +534,7 @@ def test_deploy_command_can_skip_default_version() -> None:
         result = runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--prefix",
@@ -560,7 +559,7 @@ def test_uninstall_command_removes_deployed_version() -> None:
         deploy_result = runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--prefix",
@@ -603,7 +602,7 @@ def test_uninstall_command_dry_run_preserves_deployed_version() -> None:
         runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--prefix",
@@ -730,7 +729,7 @@ prefix = "tools"
 module_root = "modules"
 
 [[tools]]
-type = "rust"
+type = "binary"
 name = "ripgrep"
 version = "14.1.1"
 binary = "{binary}"
@@ -801,7 +800,7 @@ script = "hello.sh"
         rust_result = runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--binary",
@@ -860,7 +859,7 @@ def test_list_show_and_verify_commands_use_deployment_lockfiles() -> None:
         deploy_result = runner.invoke(
             main,
             [
-                "deploy-rust",
+                "deploy-binary",
                 "ripgrep",
                 "14.1.1",
                 "--binary",
