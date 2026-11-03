@@ -39,6 +39,15 @@ The test suite is configured with coverage and a 90 percent fail-under
 threshold, so targeted pytest runs can fail coverage even when the selected test
 passes. Run the full suite before treating coverage as meaningful.
 
+## Release and Pull Request Workflow
+
+* User-facing features require a minor semantic-version bump in `pyproject.toml`,
+  `module_manager/__init__.py`, and `uv.lock`, plus a corresponding changelog
+  entry.
+* Before opening or updating a pull request, fetch `origin` and merge the
+  current `origin/main` into the feature branch. Resolve any conflicts and run
+  the full validation commands before pushing.
+
 ## Coding Rules
 
 * Preserve user changes. Do not revert unrelated dirty work.
