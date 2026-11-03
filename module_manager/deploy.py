@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -34,6 +35,7 @@ class ConstraintGenerationError(RuntimeError):
 
 VALID_INDEX_STRATEGIES = ("first-index", "unsafe-first-match", "unsafe-best-match")
 VALID_KEYRING_PROVIDERS = ("disabled", "subprocess")
+MANIFEST_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 @dataclass(frozen=True)
@@ -1113,22 +1115,125 @@ def optional_nonnegative_int(data: dict[str, Any], key: str, default: int = 0) -
     raise TypeError(msg)
 
 
-def load_environment_spec(path: Path) -> EnvironmentSpec:
+def parse_manifest_variables(values: tuple[str, ...]) -> dict[str, str]:
+    """Parse command-line collective manifest variable assignments.
+
+    Args:
+        values: Assignments in `NAME=VALUE` form.
+
+    Returns:
+        Mapping of validated manifest variable names to values.
+
+    Raises:
+        ValueError: If an assignment has no equals sign, has an invalid name,
+            or defines the same name more than once.
+    """
+    variables: dict[str, str] = {}
+    for value in values:
+        name, separator, variable_value = value.partition("=")
+        if not separator or not MANIFEST_VARIABLE_NAME.fullmatch(name):
+            msg = f"Invalid manifest variable {value!r}; use NAME=VALUE."
+            raise ValueError(msg)
+        if name in variables:
+            msg = f"Manifest variable {name!r} was specified more than once."
+            raise ValueError(msg)
+        variables[name] = variable_value
+    return variables
+
+
+def substitute_manifest_variables(value: str, variables: Mapping[str, str]) -> str:
+    """Replace `{name}` placeholders in one manifest string value.
+
+    Double braces (`{{` and `}}`) produce literal braces. Placeholders must
+    have names that match `[A-Za-z_][A-Za-z0-9_]*` and must be supplied.
+
+    Args:
+        value: String value from the parsed TOML manifest.
+        variables: Values supplied by repeatable `--set` options.
+
+    Returns:
+        The substituted string.
+
+    Raises:
+        ValueError: If a placeholder is malformed, has no supplied value, or a
+            brace is not escaped.
+    """
+    rendered: list[str] = []
+    position = 0
+    while position < len(value):
+        character = value[position]
+        if character == "{":
+            if position + 1 < len(value) and value[position + 1] == "{":
+                rendered.append("{")
+                position += 2
+                continue
+            closing = value.find("}", position + 1)
+            if closing < 0:
+                msg = f"Unclosed manifest placeholder in {value!r}."
+                raise ValueError(msg)
+            name = value[position + 1 : closing]
+            if not MANIFEST_VARIABLE_NAME.fullmatch(name):
+                msg = f"Invalid manifest placeholder {{{name}}}; use {{NAME}}."
+                raise ValueError(msg)
+            if name not in variables:
+                msg = f"Manifest placeholder {{{name}}} has no value; use --set {name}=VALUE."
+                raise ValueError(msg)
+            rendered.append(variables[name])
+            position = closing + 1
+            continue
+        if character == "}":
+            if position + 1 < len(value) and value[position + 1] == "}":
+                rendered.append("}")
+                position += 2
+                continue
+            msg = f"Unescaped closing brace in manifest value {value!r}; use }} for a literal brace."
+            raise ValueError(msg)
+        rendered.append(character)
+        position += 1
+    return "".join(rendered)
+
+
+def substitute_manifest_data(value: object, variables: Mapping[str, str]) -> object:
+    """Substitute placeholders in every string value within parsed TOML data.
+
+    Args:
+        value: Parsed TOML value to traverse.
+        variables: Values supplied by repeatable `--set` options.
+
+    Returns:
+        TOML-compatible data with string values substituted.
+    """
+    if isinstance(value, str):
+        return substitute_manifest_variables(value, variables)
+    if isinstance(value, list):
+        return [substitute_manifest_data(item, variables) for item in value]
+    if isinstance(value, dict):
+        return {key: substitute_manifest_data(item, variables) for key, item in value.items()}
+    return value
+
+
+def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None) -> EnvironmentSpec:
     """Load a collective environment specification from TOML.
 
     Args:
         path: TOML manifest path.
+        variables: Optional values used to replace `{name}` placeholders in
+            TOML string values.
 
     Returns:
         Parsed environment specification.
 
     Raises:
         TypeError: If a manifest value has the wrong type.
+        ValueError: If a placeholder is malformed or has no supplied value.
         tomllib.TOMLDecodeError: If the manifest is not valid TOML.
     """
     manifest_path = path.expanduser()
     base_dir = manifest_path.parent
-    data = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    data = substitute_manifest_data(
+        tomllib.loads(manifest_path.read_text(encoding="utf-8")),
+        variables or {},
+    )
     raw_tools = data.get("tools")
     if not isinstance(raw_tools, list):
         msg = "tools must be a list of tables"

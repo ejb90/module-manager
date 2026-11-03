@@ -878,6 +878,71 @@ script = "scripts/helper"
     assert spec.tools[1].script == tmp_path / "scripts/helper"
 
 
+def test_load_environment_spec_substitutes_manifest_variables(tmp_path: Path) -> None:
+    """Manifest variables should apply to every TOML string value.
+
+    Args:
+        tmp_path: Temporary manifest root.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        """
+name = "dev-tools"
+version = "{version}"
+
+[environment]
+TOOLS_VERSION = "{version}"
+LITERAL_BRACES = "{{value}}"
+
+[[tools]]
+type = "python"
+name = "dev-tools"
+version = "{version}"
+package = "dev-tools=={version}"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    spec = load_environment_spec(manifest, {"version": "1.2.3"})
+
+    assert spec.version == "1.2.3"
+    assert spec.environment == (("TOOLS_VERSION", "1.2.3"), ("LITERAL_BRACES", "{value}"))
+    assert spec.tools[0].version == "1.2.3"
+    assert spec.tools[0].package == "dev-tools==1.2.3"
+
+
+@pytest.mark.parametrize(
+    ("content", "variables", "message"),
+    [
+        ('name = "x"\nversion = "{version}"\n[[tools]]\ntype = "script"\nname = "x"\nscript = "x"', {}, "has no value"),
+        (
+            'name = "x"\nversion = "{version"\n[[tools]]\ntype = "script"\nname = "x"\nscript = "x"',
+            {},
+            "Unclosed manifest placeholder",
+        ),
+    ],
+)
+def test_load_environment_spec_rejects_invalid_manifest_variables(
+    tmp_path: Path,
+    content: str,
+    variables: dict[str, str],
+    message: str,
+) -> None:
+    """Manifest variable mistakes should produce clear errors.
+
+    Args:
+        tmp_path: Temporary manifest root.
+        content: TOML manifest content.
+        variables: Values supplied for manifest variables.
+        message: Expected error text.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_environment_spec(manifest, variables)
+
+
 def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> None:
     """Environment manifests should reject invalid tool tables.
 

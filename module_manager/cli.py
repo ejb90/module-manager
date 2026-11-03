@@ -29,6 +29,7 @@ from .deploy import (
     list_deployments,
     load_deployment_lock,
     load_environment_spec,
+    parse_manifest_variables,
     project_dependency_names,
     uninstall_tool,
     verify_deployment,
@@ -786,6 +787,13 @@ def deploy_script(
     help="Export an environment variable when the module loads. May be used more than once.",
 )
 @click.option(
+    "--set",
+    "manifest_variables",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help="Replace {NAME} placeholders in manifest string values. May be used more than once.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Print actions that would run without creating files.",
@@ -804,6 +812,7 @@ def deploy_env(
     prefix: Path | None,
     make_default: bool | None,
     environment: tuple[str, ...],
+    manifest_variables: tuple[str, ...],
     dry_run: bool,
     uv_executable: Path | None,
     force: bool,
@@ -818,6 +827,7 @@ def deploy_env(
         prefix: Optional install prefix overriding manifest and configuration.
         make_default: Optional override for manifest default behavior.
         environment: Variables in `NAME=VALUE` form added to the modulefile.
+        manifest_variables: Values for `{NAME}` placeholders in the manifest.
         dry_run: Whether to report actions without mutating the filesystem.
         uv_executable: Optional uv executable path for Python tools.
         force: Whether to replace an existing deployment.
@@ -827,8 +837,8 @@ def deploy_env(
         click.UsageError: If required paths are missing.
     """
     try:
-        spec = load_environment_spec(manifest)
-    except (OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        spec = load_environment_spec(manifest, parse_manifest_variables(manifest_variables))
+    except (OSError, TypeError, ValueError, tomllib.TOMLDecodeError) as error:
         raise click.ClickException(str(error)) from error
 
     resolved_module_root, resolved_prefix = require_locations(
