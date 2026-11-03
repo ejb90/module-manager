@@ -88,7 +88,7 @@ TOP_LEVEL_EXAMPLES = (
 DEPLOY_PYTHON_EXAMPLES = (
     "Examples:\n\n"
     "[cyan]module-manager deploy-python ruff 0.8.0 --package ruff==0.8.0 "
-    "--prefix /prod/tools --module-root /prod/modulefiles --execute-install[/cyan]\n\n"
+    "--prefix /prod/tools --module-root /prod/modulefiles[/cyan]\n\n"
     "[cyan]module-manager deploy-python internal-tool 1.2.3 --package internal-tool==1.2.3 "
     "--uv-config-file /prod/config/uv.toml --prefix /prod/tools --module-root /prod/modulefiles[/cyan]"
 )
@@ -307,8 +307,9 @@ def main(ctx: click.Context, config: Path | None) -> None:
 @click.option(
     "--force",
     is_flag=True,
-    help="Replace an existing deployment and executable entries.",
+    help="Replace an existing deployment version.",
 )
+@click.option("--uv-force", is_flag=True, help="Pass --force to uv tool install.")
 @click.option("--reinstall", is_flag=True, help="Reinstall all packages in the tool environment.")
 @click.option("--lfs", is_flag=True, help="Fetch Git LFS objects for Git package requirements.")
 @click.option("-v", "--verbose", count=True, help="Increase uv logging verbosity. May be used more than once.")
@@ -332,11 +333,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
     type=PATH,
     help="uv executable path. Defaults to uv on PATH.",
 )
-@click.option(
-    "--execute-install",
-    is_flag=True,
-    help="Run uv tool install before writing the modulefile.",
-)
+@click.option("--metadata-only", is_flag=True, help="Write deployment metadata without running uv tool install.")
 @click.pass_obj
 def deploy_python(
     config: AppConfig,
@@ -366,6 +363,7 @@ def deploy_python(
     refresh: bool,
     refresh_packages: tuple[str, ...],
     force: bool,
+    uv_force: bool,
     reinstall: bool,
     lfs: bool,
     verbose: int,
@@ -374,7 +372,7 @@ def deploy_python(
     overrides: tuple[str, ...],
     uv_config_file: Path | None,
     uv_executable: Path | None,
-    execute_install: bool,
+    metadata_only: bool,
 ) -> None:
     """Write a modulefile for a [cyan]uv tool install[/cyan] Python CLI.
 
@@ -407,8 +405,8 @@ def deploy_python(
         no_cache: Whether uv should avoid reading from or writing to cache.
         refresh: Whether uv should refresh cached data.
         refresh_packages: Packages whose cached data uv should refresh.
-        force: Whether to replace an existing deployment and request that uv
-            replace existing executable entries.
+        force: Whether to replace an existing deployment version.
+        uv_force: Whether to pass `--force` to `uv tool install`.
         reinstall: Whether uv should reinstall all packages.
         lfs: Whether uv should fetch Git LFS objects for Git requirements.
         verbose: Requested uv logging verbosity.
@@ -417,11 +415,11 @@ def deploy_python(
         overrides: Requirements override files passed to uv.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         uv_executable: Optional uv executable path.
-        execute_install: Whether to run `uv tool install` immediately.
+        metadata_only: Whether to omit the immediate `uv tool install`.
 
     Raises:
         click.UsageError: If required paths are missing.
-        MissingExecutableError: If `execute_install` is true and uv is not on
+        MissingExecutableError: If `metadata_only` is false and uv is not on
             `PATH`.
         subprocess.CalledProcessError: If `uv tool install` fails.
     """
@@ -458,6 +456,7 @@ def deploy_python(
             refresh=refresh,
             refresh_packages=refresh_packages,
             force=force,
+            uv_force=uv_force,
             reinstall=reinstall,
             lfs=lfs,
             verbose=verbose,
@@ -472,7 +471,7 @@ def deploy_python(
             with_editable=with_editable,
             with_executables_from=executable_sources,
             environment=parse_environment_variables(environment),
-            execute_install=execute_install,
+            execute_install=not metadata_only,
             make_default=make_default,
         )
     except DEPLOYMENT_EXCEPTIONS as error:

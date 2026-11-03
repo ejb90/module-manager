@@ -155,6 +155,7 @@ def test_python_lockfile_flags_then_records_later_installed_executables(tmp_path
     )
 
     assert not verify_deployment(paths).issues
+    assert "--force" not in paths.modulefile.read_text(encoding="utf-8")
 
 
 def test_lockfile_failure_preserves_previous_default_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -479,7 +480,7 @@ def test_deploy_python_tool_writes_package_sources_to_install_hint(tmp_path: Pat
         keyring_provider="disabled",
         constraints=("/prod/constraints.txt",),
         refresh_packages=("internal-tool",),
-        force=True,
+        uv_force=True,
         uv_config_file=Path("/prod/uv.toml"),
     )
 
@@ -823,7 +824,7 @@ overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
-force = true
+uv_force = true
 reinstall = true
 lfs = true
 verbose = 2
@@ -864,7 +865,7 @@ script = "scripts/helper"
     assert spec.tools[0].no_cache
     assert spec.tools[0].refresh
     assert spec.tools[0].refresh_packages == ("ruff",)
-    assert spec.tools[0].force
+    assert spec.tools[0].uv_force
     assert spec.tools[0].reinstall
     assert spec.tools[0].lfs
     assert spec.tools[0].verbose == 2
@@ -982,6 +983,10 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
             ),
             "keyring_provider must be one of",
         ),
+        (
+            'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\nname = "ruff"\npackage = "ruff"\nforce = true',
+            "force was renamed to uv_force",
+        ),
     ]
 
     for index, (content, message) in enumerate(cases):
@@ -1076,7 +1081,7 @@ overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
-force = true
+uv_force = true
 lfs = true
 verbose = 2
 native_tls = true

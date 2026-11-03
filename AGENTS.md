@@ -79,7 +79,7 @@ Deployments write `<module-root>/<name>/.version` by default so `module load
 <name>` resolves to the deployed version. Use `--no-default` to skip that.
 
 Rust, script, collective environment, and uninstall workflows support
-`--dry-run`. Individual `deploy-python` intentionally keeps `--execute-install`
+`--dry-run`. `deploy-python` installs with uv by default; use `--metadata-only`
 for its two-step metadata-first workflow.
 
 `uninstall` removes one versioned install root and modulefile. It removes the

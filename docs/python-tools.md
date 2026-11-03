@@ -7,7 +7,7 @@ The install subprocess ignores inherited `UV_TOOL_*` settings so the managed
 destination and install behavior are not changed by the invoking environment.
 Other uv settings, including `UV_CONFIG_FILE`, are preserved.
 
-`uv` is an external runtime requirement for `--execute-install`. It is not a
+`uv` is an external runtime requirement unless you use `--metadata-only`. It is not a
 Python package dependency because `module-manager` shells out to the `uv`
 executable and is intended to be installable by `uv` itself.
 
@@ -19,8 +19,7 @@ module-manager deploy-python ruff 0.8.0 \
   --package 'ruff==0.8.0' \
   --uv-executable /opt/uv/bin/uv \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 The same default can be set for Python workflows with an environment variable:
@@ -35,11 +34,10 @@ export MODULE_MANAGER_UV_EXECUTABLE=/opt/uv/bin/uv
 module-manager deploy-python ruff 0.8.0 \
   --package 'ruff==0.8.0' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
-Without `--execute-install`, the command creates the versioned directories and
+Use `--metadata-only` when you want to create the versioned directories and
 modulefile only. The module help includes the `uv tool install` command that an
 administrator can run later.
 
@@ -48,8 +46,8 @@ ruff` resolves to `ruff/0.8.0`. Add `--no-default` to leave the current default
 unchanged.
 
 Existing versions are left untouched by default. To deliberately replace an
-existing Python deployment, rerun the command with `--force`. For an immediate
-install, this also passes `--force` to `uv tool install`.
+existing Python deployment, rerun the command with `--force`. To pass uv's
+separate executable-replacement flag, add `--uv-force`.
 
 ## Export Environment Variables
 
@@ -75,8 +73,7 @@ module-manager deploy-python my-tool 1.0.0 \
   --package my-tool==1.0.0 \
   --with-executables-from=formatter,linter \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 Used without a value, `--with-executables-from` reads the current directory's
@@ -95,8 +92,7 @@ module-manager deploy-python my-tool 1.0.0 \
   --editable \
   --with-editable ./my-plugin \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 ## Additional Requirements and Resolver Files
@@ -115,8 +111,7 @@ module-manager deploy-python my-tool 1.0.0 \
   --overrides /prod/overrides.txt \
   --lfs \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 ## uv Runtime Controls
@@ -134,8 +129,7 @@ module-manager deploy-python gitconductor 0.1.0 \
   --default-index https://packages.example/simple \
   --index https://packages.example/simple \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 `--index` may be used more than once. Use `--default-index` to replace uv's
@@ -151,8 +145,7 @@ module-manager deploy-python gitconductor 0.1.0 \
   --package gitconductor==0.1.0 \
   --find-links /prod/wheels \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 Add `--no-index` to make the install fully wheelhouse-only:
@@ -163,8 +156,7 @@ module-manager deploy-python gitconductor 0.1.0 \
   --find-links /prod/wheels \
   --no-index \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 `--find-links` may be used more than once.
@@ -177,8 +169,7 @@ Pass a direct wheel URL or file URL as the package spec:
 module-manager deploy-python gitconductor 0.1.0 \
   --package 'gitconductor @ https://packages.example/files/gitconductor-0.1.0-py3-none-any.whl' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 For a local wheel file:
@@ -187,8 +178,7 @@ For a local wheel file:
 module-manager deploy-python gitconductor 0.1.0 \
   --package 'gitconductor @ file:///prod/wheels/gitconductor-0.1.0-py3-none-any.whl' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 ## Use Constraint Files
@@ -200,8 +190,7 @@ module-manager deploy-python gitconductor 0.1.0 \
   --package gitconductor==0.1.0 \
   --constraints /prod/constraints/runtime.txt \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 `--constraints` may be used more than once.
@@ -217,8 +206,7 @@ module-manager deploy-python gitconductor 0.1.0 \
   --refresh-package gitconductor \
   --no-cache \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 Use `--force` or `--reinstall` when re-running an install into an existing
@@ -254,8 +242,7 @@ module-manager deploy-python internal-tool 1.2.3 \
   --package internal-tool==1.2.3 \
   --uv-config-file /prod/config/uv.toml \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 The same option can be set in the module-manager config file:
@@ -277,8 +264,7 @@ supported. Pin a tag, branch, or commit to keep deployments reproducible.
 module-manager deploy-python mytool 1.0.0 \
   --package 'git+https://github.com/org/repo.git@v1.0.0' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 For an SSH Git URL:
@@ -287,8 +273,7 @@ For an SSH Git URL:
 module-manager deploy-python mytool 1.0.0 \
   --package 'git+ssh://git@github.com/org/repo.git@v1.0.0' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 For a package in a repository subdirectory:
@@ -297,8 +282,7 @@ For a package in a repository subdirectory:
 module-manager deploy-python mytool 1.0.0 \
   --package 'git+https://github.com/org/repo.git@v1.0.0#subdirectory=python/mytool' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 The positional `NAME` and `VERSION` values control the module path, for example
@@ -310,6 +294,5 @@ The positional `NAME` and `VERSION` values control the module path, for example
 module-manager deploy-python gitconductor 0.1.0 \
   --package gitconductor==0.1.0 \
   --prefix /private/tmp/module-manager-tools \
-  --module-root /private/tmp/module-manager-modulefiles \
-  --execute-install
+  --module-root /private/tmp/module-manager-modulefiles
 ```

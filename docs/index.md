@@ -37,7 +37,6 @@ module-manager deploy-python ruff 0.8.0 \
   --package 'ruff==0.8.0' \
   --prefix /prod/tools \
   --module-root /prod/modulefiles \
-  --execute-install
 
 module use /prod/modulefiles
 module load ruff/0.8.0

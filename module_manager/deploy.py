@@ -132,7 +132,7 @@ class EnvironmentToolSpec:
         no_cache: Whether uv should avoid reading from or writing to cache.
         refresh: Whether uv should refresh cached data.
         refresh_packages: Packages whose cached data uv should refresh.
-        force: Whether uv should replace existing executable entries.
+        uv_force: Whether uv should replace existing executable entries.
         reinstall: Whether uv should reinstall all packages.
         lfs: Whether uv should fetch Git LFS objects for Git requirements.
         verbose: Requested uv logging verbosity.
@@ -168,7 +168,7 @@ class EnvironmentToolSpec:
     no_cache: bool = False
     refresh: bool = False
     refresh_packages: tuple[str, ...] = ()
-    force: bool = False
+    uv_force: bool = False
     reinstall: bool = False
     lfs: bool = False
     verbose: int = 0
@@ -1277,6 +1277,9 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
 
     tool_type = require_string(data, "type")
     name = require_string(data, "name")
+    if "force" in data:
+        msg = f"tools[{index}].force was renamed to uv_force"
+        raise TypeError(msg)
     tool = EnvironmentToolSpec(
         tool_type=tool_type,
         name=name,
@@ -1299,7 +1302,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         no_cache=optional_bool(data, "no_cache", False),
         refresh=optional_bool(data, "refresh", False),
         refresh_packages=optional_string_tuple(data, "refresh_packages"),
-        force=optional_bool(data, "force", False),
+        uv_force=optional_bool(data, "uv_force", False),
         reinstall=optional_bool(data, "reinstall", False),
         lfs=optional_bool(data, "lfs", False),
         verbose=optional_nonnegative_int(data, "verbose"),
@@ -1386,7 +1389,7 @@ def environment_actions(
                 no_cache=tool.no_cache,
                 refresh=tool.refresh,
                 refresh_packages=tool.refresh_packages,
-                force=tool.force,
+                force=tool.uv_force,
                 reinstall=tool.reinstall,
                 uv_config_file=tool.uv_config_file,
                 uv_executable=tool.uv_executable or uv_executable,
@@ -1475,7 +1478,7 @@ def deploy_environment(
                         no_cache=tool.no_cache,
                         refresh=tool.refresh,
                         refresh_packages=tool.refresh_packages,
-                        force=tool.force,
+                        force=tool.uv_force,
                         reinstall=tool.reinstall,
                         uv_config_file=tool.uv_config_file,
                         uv_executable=resolved_uv_executable,
@@ -1561,6 +1564,7 @@ def deploy_python_tool(
     refresh: bool = False,
     refresh_packages: tuple[str, ...] = (),
     force: bool = False,
+    uv_force: bool = False,
     reinstall: bool = False,
     uv_config_file: Path | None = None,
     uv_executable: Path | None = None,
@@ -1599,8 +1603,8 @@ def deploy_python_tool(
         no_cache: Whether uv should avoid reading from or writing to cache.
         refresh: Whether uv should refresh cached data.
         refresh_packages: Packages whose cached data uv should refresh.
-        force: Whether to replace an existing deployment and request that uv
-            replace existing executable entries.
+        force: Whether to replace an existing deployment version.
+        uv_force: Whether to pass `--force` to `uv tool install`.
         reinstall: Whether uv should reinstall all packages.
         uv_config_file: Optional uv configuration file passed to `uv tool`.
         uv_executable: Optional uv executable path.
@@ -1645,7 +1649,7 @@ def deploy_python_tool(
             no_cache=no_cache,
             refresh=refresh,
             refresh_packages=refresh_packages,
-            force=force,
+            force=uv_force,
             reinstall=reinstall,
             uv_config_file=uv_config_file,
             uv_executable=uv_executable,

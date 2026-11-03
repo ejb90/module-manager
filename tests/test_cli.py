@@ -85,7 +85,7 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "--refresh",
                 "--refresh-package",
                 "ruff",
-                "--force",
+                "--uv-force",
                 "--reinstall",
                 "--lfs",
                 "-vv",
@@ -95,6 +95,7 @@ def test_deploy_python_command_writes_modulefile() -> None:
                 "/prod/uv.toml",
                 "--uv-executable",
                 "/opt/uv/bin/uv",
+                "--metadata-only",
             ],
         )
         modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
@@ -147,6 +148,7 @@ def test_deploy_python_uses_project_dependencies_for_executable_sources() -> Non
                 "tools",
                 "--module-root",
                 "modules",
+                "--metadata-only",
             ],
         )
         modulefile = Path("modules/my-tool/1.0.0").read_text(encoding="utf-8")
@@ -184,6 +186,7 @@ uv_executable = "bin/uv"
                 "0.8.0",
                 "--package",
                 "ruff==0.8.0",
+                "--metadata-only",
             ],
         )
         modulefile = Path("modules/ruff/0.8.0").read_text(encoding="utf-8")
@@ -337,7 +340,6 @@ def test_deploy_python_missing_uv_reports_click_error() -> None:
                 "tools",
                 "--module-root",
                 "modules",
-                "--execute-install",
                 "--uv-executable",
                 "missing-uv",
             ],
@@ -691,7 +693,7 @@ overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
 refresh_packages = ["ruff"]
-force = true
+uv_force = true
 lfs = true
 verbose = 2
 native_tls = true
@@ -831,6 +833,42 @@ script = "{script}"
     assert ripgrep_exists
     assert hello_exists
     assert modulefile_exists
+
+
+def test_deploy_env_command_requires_force_to_replace_a_version() -> None:
+    """Collective deployments should require --force before replacement."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem() as fs:
+        script = Path(fs) / "helper.sh"
+        script.write_text("#!/usr/bin/env bash\necho first\n", encoding="utf-8")
+        manifest = Path("env.toml")
+        manifest.write_text(
+            f"""
+name = "dev-tools"
+version = "2026.05"
+prefix = "tools"
+module_root = "modules"
+
+[[tools]]
+type = "script"
+name = "helper"
+script = "{script}"
+""".strip(),
+            encoding="utf-8",
+        )
+        arguments = ["deploy-env", "--file", str(manifest)]
+        first = runner.invoke(main, arguments)
+        rejected = runner.invoke(main, arguments)
+        script.write_text("#!/usr/bin/env bash\necho second\n", encoding="utf-8")
+        replaced = runner.invoke(main, [*arguments, "--force"])
+        deployed = Path("tools/dev-tools/2026.05/bin/helper").read_text(encoding="utf-8")
+
+    assert first.exit_code == 0
+    assert rejected.exit_code != 0
+    assert "Use --force to replace it" in strip_ansi(rejected.output)
+    assert replaced.exit_code == 0
+    assert "echo second" in deployed
 
 
 def test_deploy_commands_export_environment_variables() -> None:

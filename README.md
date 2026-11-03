@@ -45,8 +45,7 @@ module-manager deploy-python ruff 0.8.0 \
   --constraints /prod/constraints/runtime.txt \
   --uv-executable /opt/uv/bin/uv \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 Set `MODULE_MANAGER_UV_EXECUTABLE=/opt/uv/bin/uv` to use the same uv path by
@@ -92,8 +91,7 @@ Deploy from a direct wheel or Git URL:
 module-manager deploy-python my-tool 1.0.0 \
   --package 'my-tool @ file:///prod/wheels/my_tool-1.0.0-py3-none-any.whl' \
   --prefix /prod/tools \
-  --module-root /prod/modulefiles \
-  --execute-install
+  --module-root /prod/modulefiles
 ```
 
 Deploy a shell script:
