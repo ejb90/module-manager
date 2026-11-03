@@ -112,6 +112,12 @@ module-manager deploy-env --file dev-tools.toml --dry-run
 module-manager deploy-env --file dev-tools.toml
 ```
 
+Collective manifests can reuse command-line values in string fields with
+`{NAME}` placeholders. For example, use `version = "{version}"` and
+`package = "my-tool=={version}"`, then deploy with
+`module-manager deploy-env --file dev-tools.toml --set version=1.2.3`.
+Use `{{` and `}}` for literal braces.
+
 Deploying an existing name and version is refused by default. Add `--force` to
 replace that deployment deliberately.
 

@@ -134,6 +134,7 @@ module-manager deploy-env \
   --file MANIFEST.toml \
   [--prefix PATH] \
   [--module-root PATH] \
+  [--set NAME=VALUE] \
   [--no-default] \
   [--force] \
   [--dry-run]

@@ -236,3 +236,33 @@ module-manager deploy-env \
   --module-root /scratch/modulefiles \
   --no-default
 ```
+
+## Manifest variables
+
+Use `{NAME}` placeholders in manifest string values and set their values with
+repeatable `--set NAME=VALUE` options. This is useful when an environment
+version, a Python tool version, its package pin, and an exported variable all
+share the version from a project's `pyproject.toml`:
+
+```toml
+name = "release-tools"
+version = "{version}"
+
+[environment]
+RELEASE_TOOLS_VERSION = "{version}"
+
+[[tools]]
+type = "python"
+name = "release-tools"
+version = "{version}"
+package = "release-tools=={version}"
+```
+
+```sh
+VERSION=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+module-manager deploy-env --file release-tools.toml --set version="$VERSION"
+```
+
+Every placeholder must have a matching `--set` value; an unset or malformed
+placeholder is an error. Use `{{` and `}}` for literal braces. Substitution
+applies only to TOML string values, never table keys or non-string values.
