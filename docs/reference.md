@@ -73,6 +73,7 @@ module-manager deploy-python NAME VERSION \
   [--refresh] \
   [--refresh-package PACKAGE] \
   [--force] \
+  [--uv-force] \
   [--reinstall] \
   [--lfs] \
   [-v|--verbose] \
@@ -84,7 +85,7 @@ module-manager deploy-python NAME VERSION \
   [--prefix PATH] \
   [--module-root PATH] \
   [--no-default] \
-  [--execute-install]
+  [--metadata-only]
 ```
 
 ## Auto-Constraints Command

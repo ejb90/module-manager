@@ -79,7 +79,7 @@ deployment metadata and SHA-256 checksums for the generated modulefile and
 executables.
 
 `verify` reports missing, modified, or unexpected executables in the managed
-`bin` directory. For a Python deployment created without `--execute-install`,
+`bin` directory. For a Python deployment created with `--metadata-only`,
 run the displayed `uv tool install` command and then rerun `deploy-python` to
 record its installed executables in the lockfile.
 

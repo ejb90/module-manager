@@ -2,7 +2,7 @@
 
 `module-manager` expects two external command-line tools for a full workflow:
 
-- `uv`, when deploying Python tools with `--execute-install`
+- `uv`, when deploying Python tools
 - Environment Modules, when loading generated modulefiles
 
 ## Install uv

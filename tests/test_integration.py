@@ -37,7 +37,6 @@ def test_deploy_python_real_uv_install_uses_cli_roots(tmp_path: Path, monkeypatc
             str(prefix),
             "--module-root",
             str(module_root),
-            "--execute-install",
         ],
     )
 
@@ -122,7 +121,6 @@ def main() -> None:
             str(prefix),
             "--module-root",
             str(module_root),
-            "--execute-install",
         ],
     )
 

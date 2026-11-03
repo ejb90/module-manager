@@ -38,7 +38,7 @@ overrides = ["/prod/overrides.txt"]
 no_cache = false
 refresh = false
 refresh_packages = ["ruff"]
-force = false
+uv_force = false
 reinstall = false
 lfs = false
 verbose = 0
@@ -76,6 +76,10 @@ module-manager deploy-env --file dev-tools.toml --uv-executable /opt/uv/bin/uv
 You can also set the same default with `MODULE_MANAGER_UV_EXECUTABLE`, or set
 `uv_executable` on an individual Python tool in the manifest when only that
 entry needs a different executable.
+
+Use top-level `--force` only to replace an existing collective deployment. For
+an individual Python tool, set `uv_force = true` to pass `--force` to
+`uv tool install`.
 
 This writes one shared environment:
 
