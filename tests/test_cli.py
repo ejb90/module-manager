@@ -730,6 +730,53 @@ uv_executable = "bin/uv"
     assert not install_root_exists
 
 
+def test_deploy_env_command_substitutes_manifest_variables() -> None:
+    """Collective deployments should accept values for manifest placeholders."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        manifest = Path("env.toml")
+        manifest.write_text(
+            """
+name = "dev-tools"
+version = "{version}"
+prefix = "tools"
+module_root = "modules"
+
+[[tools]]
+type = "script"
+name = "helper"
+version = "{version}"
+script = "helper-{version}.sh"
+""".strip(),
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            main,
+            ["deploy-env", "--file", str(manifest), "--set", "version=1.2.3", "--dry-run"],
+        )
+
+    assert result.exit_code == 0
+    assert "would create install root: tools/dev-tools/1.2.3" in result.output
+    assert "helper-1.2.3.sh" in result.output
+
+
+def test_deploy_env_command_rejects_invalid_manifest_variable_assignment() -> None:
+    """Collective deployment should reject invalid --set assignments."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        manifest = Path("env.toml")
+        manifest.write_text(
+            'name = "dev-tools"\nversion = "1"\n[[tools]]\ntype = "script"\nname = "helper"\nscript = "helper.sh"',
+            encoding="utf-8",
+        )
+        result = runner.invoke(main, ["deploy-env", "--file", str(manifest), "--set", "bad-name=value"])
+
+    assert result.exit_code != 0
+    assert "Invalid manifest variable" in result.output
+
+
 def test_deploy_env_command_reports_invalid_manifest() -> None:
     """Invalid environment manifests should produce a Click error."""
     runner = CliRunner()
