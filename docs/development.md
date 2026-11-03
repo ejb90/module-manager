@@ -31,7 +31,8 @@ uv build
 ## macOS `.venv` Notes
 
 On some macOS systems, a `.venv` tree can acquire the filesystem `hidden` flag.
-Python 3.14 skips hidden `.pth` files, which can break editable installs.
+Python 3.14 and later skip hidden `.pth` files, which can break editable
+installs.
 
 One robust local workaround is to keep the real environment in `venv/` and point
 `.venv` at it:
