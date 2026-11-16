@@ -1399,9 +1399,12 @@ def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None
     """
     manifest_path = path.expanduser()
     base_dir = manifest_path.parent
-    data = substitute_manifest_data(
-        tomllib.loads(manifest_path.read_text(encoding="utf-8")),
-        variables or {},
+    data = cast(
+        dict[str, Any],
+        substitute_manifest_data(
+            tomllib.loads(manifest_path.read_text(encoding="utf-8")),
+            variables or {},
+        ),
     )
     raw_tools = data.get("tools")
     if not isinstance(raw_tools, list):

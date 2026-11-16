@@ -4,6 +4,7 @@ import stat
 import subprocess
 from pathlib import Path
 from shlex import quote as shlex_quote
+from typing import Any
 
 import pytest
 
@@ -609,7 +610,7 @@ def test_deployment_requires_force_to_replace_an_existing_version(tmp_path: Path
     """
     source = tmp_path / "rg"
     source.write_text("first", encoding="utf-8")
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "name": "ripgrep",
         "version": "14.1.1",
         "module_root": tmp_path / "modules",
