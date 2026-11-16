@@ -37,6 +37,7 @@ class ConstraintGenerationError(RuntimeError):
 VALID_INDEX_STRATEGIES = ("first-index", "unsafe-first-match", "unsafe-best-match")
 VALID_KEYRING_PROVIDERS = ("disabled", "subprocess")
 VALID_BINARY_MODES = ("copy", "symlink", "hardlink")
+EXPOSED_EXECUTABLE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
 TOOL_DEFAULT_FIELDS = {
     "python": frozenset(
         {
@@ -157,6 +158,8 @@ class EnvironmentToolSpec:
         binary_mode: Whether to copy, symlink, or hard-link the binary.
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
+        expose_python: Optional command name that launches the tool
+            environment's Python interpreter.
         indexes: Additional package index URLs passed to uv.
         default_index: Default package index URL passed to uv.
         find_links: Wheelhouse directories or HTML package pages passed to uv.
@@ -194,6 +197,7 @@ class EnvironmentToolSpec:
     binary_mode: str = "copy"
     script: Path | None = None
     python: str | None = None
+    expose_python: str | None = None
     indexes: tuple[str, ...] = ()
     default_index: str | None = None
     find_links: tuple[str, ...] = ()
@@ -627,6 +631,95 @@ def uv_install_environment(tool_dir: Path, bin_dir: Path) -> dict[str, str]:
     env["UV_TOOL_DIR"] = str(tool_dir)
     env["UV_TOOL_BIN_DIR"] = str(bin_dir)
     return env
+
+
+def uv_tool_receipts(tool_dir: Path) -> dict[Path, tuple[int, int]]:
+    """Return uv tool receipt timestamps and sizes below a tool directory.
+
+    Args:
+        tool_dir: Root containing uv-managed tool environments.
+
+    Returns:
+        Receipt paths mapped to modification-time and size fingerprints.
+    """
+    if not tool_dir.is_dir():
+        return {}
+    return {
+        receipt: (receipt.stat().st_mtime_ns, receipt.stat().st_size) for receipt in tool_dir.glob("*/uv-receipt.toml")
+    }
+
+
+def find_uv_tool_environment(
+    tool_dir: Path,
+    bin_dir: Path,
+    entrypoint_name: str,
+    previous_receipts: Mapping[Path, tuple[int, int]],
+) -> Path:
+    """Identify the uv environment created or updated by a tool install.
+
+    The receipt changed by the install is authoritative. For an unchanged
+    forced deployment, the installed entry point or a sole tool environment is
+    used as a fallback.
+
+    Args:
+        tool_dir: Root containing uv-managed tool environments.
+        bin_dir: Shared executable directory populated by uv.
+        entrypoint_name: Manifest tool name used for entry-point fallback.
+        previous_receipts: Receipt fingerprints captured before installation.
+
+    Returns:
+        Path to the installed uv tool environment.
+
+    Raises:
+        ValueError: If the installed environment cannot be identified uniquely.
+    """
+    current_receipts = uv_tool_receipts(tool_dir)
+    changed = [
+        receipt.parent
+        for receipt, fingerprint in current_receipts.items()
+        if previous_receipts.get(receipt) != fingerprint
+    ]
+    if len(changed) == 1:
+        return changed[0]
+
+    entrypoint = bin_dir / entrypoint_name
+    if entrypoint.is_symlink():
+        target = entrypoint.readlink()
+        if not target.is_absolute():
+            target = entrypoint.parent / target
+        candidate = target.absolute().parent.parent
+        if candidate.parent == tool_dir.absolute() and (candidate / "uv-receipt.toml").is_file():
+            return candidate
+
+    environments = [receipt.parent for receipt in current_receipts]
+    if len(environments) == 1:
+        return environments[0]
+
+    msg = f"Could not identify the uv tool environment for {entrypoint_name!r}."
+    raise ValueError(msg)
+
+
+def write_python_launcher(interpreter: Path, target: Path) -> None:
+    """Write an executable wrapper for a uv tool environment's Python.
+
+    A wrapper is required instead of an additional symlink because Python uses
+    the invoked executable path to discover its virtual environment.
+
+    Args:
+        interpreter: Python executable inside the uv tool environment.
+        target: Command path to expose in the shared `bin` directory.
+
+    Raises:
+        FileNotFoundError: If the tool environment has no Python executable.
+        ValueError: If another deployed executable already owns the target.
+    """
+    if not interpreter.is_file():
+        raise FileNotFoundError(interpreter)
+    if target.exists() or target.is_symlink():
+        msg = f"Cannot expose Python as {target.name!r}; that executable already exists."
+        raise ValueError(msg)
+    write_text(target, f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} "$@"\n')
+    target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def write_text(path: Path, content: str) -> None:
@@ -1419,6 +1512,7 @@ def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None
     if not tools:
         msg = "tools must contain at least one entry"
         raise TypeError(msg)
+    validate_exposed_python_names(tools)
 
     return EnvironmentSpec(
         name=require_string(data, "name"),
@@ -1471,6 +1565,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         binary_mode=binary_mode if binary_mode is not None else "copy",
         script=optional_manifest_path(data, "script", base_dir),
         python=optional_string(data, "python"),
+        expose_python=optional_string(data, "expose_python"),
         indexes=optional_string_tuple(data, "indexes"),
         default_index=optional_string(data, "default_index"),
         find_links=optional_string_tuple(data, "find_links"),
@@ -1512,6 +1607,9 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
         if not tool.package:
             msg = f"tools[{index}].package is required for python tools"
             raise TypeError(msg)
+        if tool.expose_python is not None and not EXPOSED_EXECUTABLE_NAME.fullmatch(tool.expose_python):
+            msg = f"tools[{index}].expose_python must be a safe executable name"
+            raise TypeError(msg)
         if tool.index_strategy and tool.index_strategy not in VALID_INDEX_STRATEGIES:
             msg = f"tools[{index}].index_strategy must be one of: {', '.join(VALID_INDEX_STRATEGIES)}"
             raise TypeError(msg)
@@ -1520,6 +1618,9 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
             raise TypeError(msg)
         return
     if tool.tool_type == "binary":
+        if tool.expose_python is not None:
+            msg = f"tools[{index}].expose_python is only valid for python tools"
+            raise TypeError(msg)
         if not tool.binary:
             msg = f"tools[{index}].binary is required for binary tools"
             raise TypeError(msg)
@@ -1528,12 +1629,39 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
             raise TypeError(msg)
         return
     if tool.tool_type == "script":
+        if tool.expose_python is not None:
+            msg = f"tools[{index}].expose_python is only valid for python tools"
+            raise TypeError(msg)
         if not tool.script:
             msg = f"tools[{index}].script is required for script tools"
             raise TypeError(msg)
         return
     msg = f"tools[{index}].type must be one of: python, binary, script"
     raise TypeError(msg)
+
+
+def validate_exposed_python_names(tools: tuple[EnvironmentToolSpec, ...]) -> None:
+    """Reject exposed Python names that would collide in the shared bin path.
+
+    Args:
+        tools: Parsed collective environment tools.
+
+    Raises:
+        TypeError: If an exposed name matches a tool name or another exposed
+            Python command.
+    """
+    tool_names = {tool.name for tool in tools}
+    exposed_names: set[str] = set()
+    for tool in tools:
+        if not tool.expose_python:
+            continue
+        if tool.expose_python in tool_names:
+            msg = f"expose_python name {tool.expose_python!r} conflicts with a tool name"
+            raise TypeError(msg)
+        if tool.expose_python in exposed_names:
+            msg = f"expose_python name {tool.expose_python!r} is used more than once"
+            raise TypeError(msg)
+        exposed_names.add(tool.expose_python)
 
 
 def environment_actions(
@@ -1592,6 +1720,8 @@ def environment_actions(
                 f"UV_TOOL_BIN_DIR={shlex.quote(str(paths.bin_dir))} "
                 f"{shlex.join(command)}"
             )
+            if tool.expose_python:
+                actions.append(f"expose python {tool.name} as: {paths.bin_dir / tool.expose_python}")
         elif tool.tool_type == "binary" and tool.binary:
             actions.append(f"{tool.binary_mode} binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
         elif tool.tool_type == "script" and tool.script:
@@ -1646,6 +1776,7 @@ def deploy_environment(
             if tool.tool_type == "python" and tool.package:
                 resolved_uv_executable = tool.uv_executable or uv_executable
                 require_executable(str(resolved_uv_executable or "uv"))
+                previous_receipts = uv_tool_receipts(tool_dir) if tool.expose_python else {}
                 subprocess.run(
                     uv_install_command(
                         tool.package,
@@ -1678,6 +1809,17 @@ def deploy_environment(
                     check=True,
                     env=uv_install_environment(tool_dir, paths.bin_dir),
                 )
+                if tool.expose_python:
+                    environment_dir = find_uv_tool_environment(
+                        tool_dir,
+                        paths.bin_dir,
+                        tool.name,
+                        previous_receipts,
+                    )
+                    write_python_launcher(
+                        environment_dir / "bin" / "python",
+                        paths.bin_dir / tool.expose_python,
+                    )
             elif tool.tool_type == "binary" and tool.binary:
                 install_binary(tool.binary, paths.bin_dir / tool.name, tool.binary_mode)
             elif tool.tool_type == "script" and tool.script:
@@ -1713,6 +1855,7 @@ def deploy_environment(
                         "type": tool.tool_type,
                         "version": tool.version,
                         "package": tool.package,
+                        "expose_python": tool.expose_python,
                         "binary": str(tool.binary) if tool.binary else None,
                         "binary_mode": tool.binary_mode if tool.binary else None,
                     }

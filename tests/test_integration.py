@@ -10,6 +10,54 @@ from module_manager.cli import main
 
 
 @pytest.mark.integration
+def test_collective_environment_exposes_tool_python(tmp_path: Path) -> None:
+    """An exposed Python command should retain its uv tool environment.
+
+    Args:
+        tmp_path: Temporary deployment root.
+    """
+    project_root = Path(__file__).parent.parent
+    prefix = tmp_path / "tools"
+    module_root = tmp_path / "modules"
+    manifest = tmp_path / "environment.toml"
+    manifest.write_text(
+        f"""
+name = "module-manager-tools"
+version = "1.0.0"
+prefix = "{prefix}"
+module_root = "{module_root}"
+
+[[tools]]
+type = "python"
+name = "module-manager"
+package = "{project_root}"
+expose_python = "module-manager-python"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(main, ["deploy-env", "--file", str(manifest)])
+
+    install_root = prefix / "module-manager-tools" / "1.0.0"
+    launcher = install_root / "bin" / "module-manager-python"
+    assert result.exit_code == 0, result.output
+    completed = subprocess.run(
+        [
+            str(launcher),
+            "-c",
+            "import module_manager, sys; print(sys.prefix); print(module_manager.__file__)",
+        ],
+        check=True,
+        capture_output=True,
+        cwd=tmp_path,
+        text=True,
+    )
+    output = completed.stdout.splitlines()
+    assert output[0] == str(install_root / "uv-tools" / "env-module-manager")
+    assert output[1].startswith(str(install_root / "uv-tools" / "env-module-manager"))
+
+
+@pytest.mark.integration
 def test_deploy_python_real_uv_install_uses_cli_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A real uv install should use the CLI prefix and module root.
 

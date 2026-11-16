@@ -26,6 +26,7 @@ type = "python"
 name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
+expose_python = "dev-python"
 with = ["ruff-lsp==0.1"]
 with_requirements = ["requirements.txt"]
 editable = false
@@ -149,6 +150,29 @@ For a Python tool, set `with_executables_from` to expose executable entry
 points from its dependencies as well. It is a list of package names and maps to
 uv's `--with-executables-from=package1,package2` option.
 
+Set `expose_python` on a Python tool to add a named command that launches the
+Python interpreter from that tool's isolated uv environment. Scripts run with
+this command can import the same packages as the installed tool:
+
+```toml
+[[tools]]
+type = "python"
+name = "ruff"
+package = "ruff==0.8.0"
+expose_python = "ruff-python"
+```
+
+```sh
+module load dev-tools
+ruff-python analysis.py
+```
+
+Using `expose_python = "python"` deliberately makes `python` resolve to that
+tool environment while the module is loaded. A collective manifest may expose
+each command name only once, and exposed names cannot match a tool name or an
+existing executable. Tool-specific names are safer when several isolated
+Python tools share one module.
+
 Set `editable = true` to install the Python tool's package in editable mode.
 Use `with_editable = ["/path/to/package"]` to add extra editable packages.
 Use `with = ["package==1"]`, `with_requirements = ["requirements.txt"]`,
@@ -188,9 +212,10 @@ python = "3.14"
 no_cache = false
 ```
 
-All Python-specific deployment options can be defaults. Tool identity and
+All reusable Python deployment options can be defaults. Tool identity and
 package fields—including `type`, `name`, `version`, and `package`—must remain in
-each tool entry. Relative paths in defaults are resolved from the manifest, and
+each tool entry. `expose_python` is also per-tool because it claims a unique
+command name. Relative paths in defaults are resolved from the manifest, and
 `{NAME}` substitution applies before defaults are inherited.
 
 Binary entries can share their installation mode in `[defaults.binary]`:
