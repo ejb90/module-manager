@@ -77,6 +77,9 @@ manifest's `[environment]` table. Values in that table expand `$NAME` and
 Collective manifests can also define shell aliases in an `[alias]` table.
 Binary entries support `binary_mode = "copy"`, `"symlink"`, or `"hardlink"`;
 the default remains `"copy"`.
+Use `[defaults.python]` to share Python deployment options across collective
+tool entries, and `[defaults.binary]` to share `binary_mode`. Values declared
+on an individual tool replace inherited defaults.
 
 Every completed deployment includes a `module-manager.lock.json` file with its
 metadata and generated-file checksums. Use `module-manager list --prefix PATH`,

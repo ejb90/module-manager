@@ -941,6 +941,66 @@ package = "dev-tools=={version}"
     assert spec.tools[0].package == "dev-tools==1.2.3"
 
 
+def test_load_environment_spec_applies_type_defaults(tmp_path: Path) -> None:
+    """Tool fields should override reusable defaults for their declared type.
+
+    Args:
+        tmp_path: Temporary manifest root.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        """
+name = "dev-tools"
+version = "1.0.0"
+
+[defaults.python]
+python = "{python}"
+indexes = ["https://packages.example/simple"]
+constraints = ["constraints.txt"]
+no_cache = true
+verbose = 2
+
+[defaults.binary]
+binary_mode = "symlink"
+
+[[tools]]
+type = "python"
+name = "ruff"
+package = "ruff==0.8.0"
+
+[[tools]]
+type = "python"
+name = "mypy"
+package = "mypy==1.18.2"
+python = "3.14"
+indexes = []
+constraints = ["mypy-constraints.txt"]
+no_cache = false
+verbose = 0
+
+[[tools]]
+type = "binary"
+name = "large-tool"
+binary = "large-tool"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    spec = load_environment_spec(manifest, {"python": "3.13"})
+
+    assert spec.tools[0].python == "3.13"
+    assert spec.tools[0].indexes == ("https://packages.example/simple",)
+    assert spec.tools[0].constraints == (str(tmp_path / "constraints.txt"),)
+    assert spec.tools[0].no_cache
+    assert spec.tools[0].verbose == 2
+    assert spec.tools[1].python == "3.14"
+    assert spec.tools[1].indexes == ()
+    assert spec.tools[1].constraints == (str(tmp_path / "mypy-constraints.txt"),)
+    assert not spec.tools[1].no_cache
+    assert spec.tools[1].verbose == 0
+    assert spec.tools[2].binary_mode == "symlink"
+
+
 @pytest.mark.parametrize(
     ("content", "variables", "message"),
     [
@@ -996,6 +1056,51 @@ def test_load_environment_spec_rejects_invalid_aliases(
     manifest = tmp_path / "env.toml"
     manifest.write_text(
         f'name = "x"\nversion = "1"\n{alias_table}\n[[tools]]\ntype = "script"\nname = "x"\nscript = "x"',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=message):
+        load_environment_spec(manifest)
+
+
+@pytest.mark.parametrize(
+    ("defaults", "tool", "message"),
+    [
+        ('defaults = "bad"', 'type = "script"\nname = "x"\nscript = "x"', "defaults must be a table"),
+        (
+            '[defaults.rust]\ntoolchain = "stable"',
+            'type = "script"\nname = "x"\nscript = "x"',
+            "unsupported tool type: rust",
+        ),
+        (
+            '[defaults.python]\npackage = "ruff"',
+            'type = "python"\nname = "ruff"\npackage = "ruff"',
+            "defaults.python.package is not a supported default",
+        ),
+        (
+            '[defaults.python]\nindexes = "bad"',
+            'type = "python"\nname = "ruff"\npackage = "ruff"',
+            "indexes must be a list of strings",
+        ),
+    ],
+)
+def test_load_environment_spec_rejects_invalid_tool_defaults(
+    tmp_path: Path,
+    defaults: str,
+    tool: str,
+    message: str,
+) -> None:
+    """Collective manifests should reject malformed or unknown defaults.
+
+    Args:
+        tmp_path: Temporary manifest root.
+        defaults: Defaults table content under test.
+        tool: Tool table content used to complete the manifest.
+        message: Expected validation error text.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        f'name = "x"\nversion = "1"\n{defaults}\n[[tools]]\n{tool}',
         encoding="utf-8",
     )
 
@@ -1216,16 +1321,19 @@ def test_deploy_environment_installs_python_tool(tmp_path: Path, monkeypatch: py
 name = "dev-tools"
 version = "2026.05"
 
+[defaults.python]
+python = "3.12"
+default_index = "https://default.example/simple"
+no_index = true
+constraints = ["constraints.txt"]
+native_tls = true
+
 [[tools]]
 type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
 with = ["ruff-lsp==0.1"]
 with_requirements = ["requirements.txt"]
-python = "3.12"
-default_index = "https://default.example/simple"
-no_index = true
-constraints = ["constraints.txt"]
 overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
@@ -1233,7 +1341,6 @@ refresh_packages = ["ruff"]
 uv_force = true
 lfs = true
 verbose = 2
-native_tls = true
 no_config = true
 editable = true
 with_editable = ["ruff-lsp", "ruff-format"]

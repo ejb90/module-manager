@@ -160,6 +160,50 @@ Set `verbose` to an integer for repeated `-v` flags. `native_tls = true` and
 `no_config = true` pass through their corresponding uv runtime controls; use
 the existing `uv_config_file` key for an explicit uv configuration file.
 
+## Shared Tool Defaults
+
+Use `[defaults.python]` to set Python options once for every Python tool in the
+manifest. A field written directly in a `[[tools]]` entry replaces its default;
+lists are replaced rather than combined, and falsey values such as `false`, `0`,
+and `[]` are explicit overrides.
+
+```toml
+[defaults.python]
+python = "3.13"
+indexes = ["https://packages.example/simple"]
+constraints = ["constraints.txt"]
+native_tls = true
+no_cache = true
+
+[[tools]]
+type = "python"
+name = "ruff"
+package = "ruff==0.8.0"
+
+[[tools]]
+type = "python"
+name = "mypy"
+package = "mypy==1.18.2"
+python = "3.14"
+no_cache = false
+```
+
+All Python-specific deployment options can be defaults. Tool identity and
+package fields—including `type`, `name`, `version`, and `package`—must remain in
+each tool entry. Relative paths in defaults are resolved from the manifest, and
+`{NAME}` substitution applies before defaults are inherited.
+
+Binary entries can share their installation mode in `[defaults.binary]`:
+
+```toml
+[defaults.binary]
+binary_mode = "symlink"
+```
+
+Individual binary entries can override `binary_mode`. Script entries currently
+have no reusable type-specific settings, so there is no `defaults.script`
+table.
+
 ## Multiple Python Tools
 
 A collective environment can install several Python CLIs into the same shared

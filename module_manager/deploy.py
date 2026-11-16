@@ -37,6 +37,38 @@ class ConstraintGenerationError(RuntimeError):
 VALID_INDEX_STRATEGIES = ("first-index", "unsafe-first-match", "unsafe-best-match")
 VALID_KEYRING_PROVIDERS = ("disabled", "subprocess")
 VALID_BINARY_MODES = ("copy", "symlink", "hardlink")
+TOOL_DEFAULT_FIELDS = {
+    "python": frozenset(
+        {
+            "with",
+            "with_requirements",
+            "uv_config_file",
+            "uv_executable",
+            "python",
+            "indexes",
+            "default_index",
+            "find_links",
+            "no_index",
+            "index_strategy",
+            "keyring_provider",
+            "constraints",
+            "no_cache",
+            "refresh",
+            "refresh_packages",
+            "uv_force",
+            "reinstall",
+            "lfs",
+            "verbose",
+            "native_tls",
+            "no_config",
+            "overrides",
+            "editable",
+            "with_editable",
+            "with_executables_from",
+        }
+    ),
+    "binary": frozenset({"binary_mode"}),
+}
 MANIFEST_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
@@ -1291,6 +1323,64 @@ def substitute_manifest_data(value: object, variables: Mapping[str, str]) -> obj
     return value
 
 
+def parse_tool_defaults(data: dict[str, Any]) -> dict[str, dict[str, object]]:
+    """Read and validate type-specific collective tool defaults.
+
+    Args:
+        data: Parsed top-level manifest data.
+
+    Returns:
+        Defaults keyed by supported tool type.
+
+    Raises:
+        TypeError: If `defaults` is malformed or contains unsupported groups or
+            fields.
+    """
+    value = data.get("defaults")
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        msg = "defaults must be a table"
+        raise TypeError(msg)
+
+    unsupported_groups = sorted(set(value) - set(TOOL_DEFAULT_FIELDS))
+    if unsupported_groups:
+        msg = f"defaults contains unsupported tool type: {unsupported_groups[0]}"
+        raise TypeError(msg)
+
+    defaults: dict[str, dict[str, object]] = {}
+    for tool_type, fields in value.items():
+        if not isinstance(fields, dict):
+            msg = f"defaults.{tool_type} must be a table"
+            raise TypeError(msg)
+        unsupported_fields = sorted(set(fields) - TOOL_DEFAULT_FIELDS[tool_type])
+        if unsupported_fields:
+            msg = f"defaults.{tool_type}.{unsupported_fields[0]} is not a supported default"
+            raise TypeError(msg)
+        defaults[tool_type] = dict(fields)
+    return defaults
+
+
+def apply_tool_defaults(data: object, defaults: Mapping[str, Mapping[str, object]]) -> object:
+    """Apply defaults for a collective tool's declared type.
+
+    Explicit tool fields replace inherited values, including lists and falsey
+    scalar values.
+
+    Args:
+        data: Raw collective tool entry.
+        defaults: Validated defaults keyed by tool type.
+
+    Returns:
+        Tool data with matching defaults applied, or the original value when it
+        is not a table with a string `type` field.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("type"), str):
+        return data
+    inherited = defaults.get(data["type"], {})
+    return {**inherited, **data}
+
+
 def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None) -> EnvironmentSpec:
     """Load a collective environment specification from TOML.
 
@@ -1318,7 +1408,11 @@ def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None
         msg = "tools must be a list of tables"
         raise TypeError(msg)
 
-    tools = tuple(parse_environment_tool(item, base_dir, index) for index, item in enumerate(raw_tools, start=1))
+    defaults = parse_tool_defaults(data)
+    tools = tuple(
+        parse_environment_tool(apply_tool_defaults(item, defaults), base_dir, index)
+        for index, item in enumerate(raw_tools, start=1)
+    )
     if not tools:
         msg = "tools must contain at least one entry"
         raise TypeError(msg)
