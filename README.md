@@ -72,7 +72,14 @@ module-manager deploy-binary ripgrep 14.1.1 \
 
 Add `--env NAME=VALUE` to any deploy command to export a variable from the
 generated modulefile. For `deploy-env`, variables can also be declared in the
-manifest's `[environment]` table.
+manifest's `[environment]` table. Values in that table expand `$NAME` and
+`${NAME}` references from the environment running `module-manager`.
+Collective manifests can also define shell aliases in an `[alias]` table.
+Binary entries support `binary_mode = "copy"`, `"symlink"`, or `"hardlink"`;
+the default remains `"copy"`.
+Use `[defaults.python]` to share Python deployment options across collective
+tool entries, and `[defaults.binary]` to share `binary_mode`. Values declared
+on an individual tool replace inherited defaults.
 
 Every completed deployment includes a `module-manager.lock.json` file with its
 metadata and generated-file checksums. Use `module-manager list --prefix PATH`,

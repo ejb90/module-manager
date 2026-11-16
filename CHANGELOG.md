@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.19.0] - 2026-11-16
+
+### Added
+
+- Add an `[alias]` table to collective manifests for defining shell aliases.
+- Add `binary_mode` to collective binary entries with `copy`, `symlink`, and
+  `hardlink` options.
+- Add `[defaults.python]` and `[defaults.binary]` tables for inheriting reusable
+  collective tool options with per-tool overrides.
+
+### Fixed
+
+- Expand `$NAME` and `${NAME}` references in collective manifest
+  `[environment]` values from the deployment process environment.
+
 ## [0.18.0] - 2026-11-03
 
 ### Changed

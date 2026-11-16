@@ -17,6 +17,10 @@ default = true
 [environment]
 DEV_TOOLS_CACHE = "/scratch/dev-tools"
 
+[alias]
+lint = "ruff check ."
+format = "ruff format ."
+
 [[tools]]
 type = "python"
 name = "ruff"
@@ -52,6 +56,7 @@ type = "binary"
 name = "ripgrep"
 version = "14.1.1"
 binary = "./target/release/rg"
+binary_mode = "copy"
 
 [[tools]]
 type = "script"
@@ -96,17 +101,49 @@ module use /prod/modulefiles
 module load dev-tools
 ```
 
-The top-level `[environment]` table exports literal environment variables when
-the collective module loads. You can add or override values at deployment time
-with repeatable `--env NAME=VALUE` options; command-line values take precedence
-over variables in the manifest.
+The top-level `[environment]` table exports environment variables when the
+collective module loads. `$NAME` and `${NAME}` references in its values are
+expanded from the environment running `module-manager` before the modulefile is
+written. You can add or override values at deployment time with repeatable
+`--env NAME=VALUE` options; command-line values take precedence over variables
+in the manifest and remain literal.
+
+```toml
+[environment]
+DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
+```
 
 ```sh
 module-manager deploy-env --file dev-tools.toml --env PAGER=less
 ```
 
+The top-level `[alias]` table defines shell aliases when the collective module
+loads. Alias commands are written literally, so shell variables and other shell
+expressions are evaluated when the alias is invoked.
+
+```toml
+[alias]
+lint = "ruff check ."
+show-cache = "echo $DEV_TOOLS_CACHE"
+```
+
 Relative `binary` and `script` paths are resolved relative to the manifest file.
 Relative Python `constraints` paths are resolved the same way.
+
+Binary entries use `binary_mode = "copy"` by default. Set it to `"symlink"`
+to create an absolute symbolic link to a large binary, or `"hardlink"` to
+create a hard link without duplicating its data. Link sources must already be
+executable. Symbolic links depend on the original path remaining available;
+hard links require the source and deployment prefix to be on the same
+filesystem.
+
+```toml
+[[tools]]
+type = "binary"
+name = "large-solver"
+binary = "/shared/build/large-solver"
+binary_mode = "symlink"
+```
 
 For a Python tool, set `with_executables_from` to expose executable entry
 points from its dependencies as well. It is a list of package names and maps to
@@ -122,6 +159,50 @@ the manifest.
 Set `verbose` to an integer for repeated `-v` flags. `native_tls = true` and
 `no_config = true` pass through their corresponding uv runtime controls; use
 the existing `uv_config_file` key for an explicit uv configuration file.
+
+## Shared Tool Defaults
+
+Use `[defaults.python]` to set Python options once for every Python tool in the
+manifest. A field written directly in a `[[tools]]` entry replaces its default;
+lists are replaced rather than combined, and falsey values such as `false`, `0`,
+and `[]` are explicit overrides.
+
+```toml
+[defaults.python]
+python = "3.13"
+indexes = ["https://packages.example/simple"]
+constraints = ["constraints.txt"]
+native_tls = true
+no_cache = true
+
+[[tools]]
+type = "python"
+name = "ruff"
+package = "ruff==0.8.0"
+
+[[tools]]
+type = "python"
+name = "mypy"
+package = "mypy==1.18.2"
+python = "3.14"
+no_cache = false
+```
+
+All Python-specific deployment options can be defaults. Tool identity and
+package fields—including `type`, `name`, `version`, and `package`—must remain in
+each tool entry. Relative paths in defaults are resolved from the manifest, and
+`{NAME}` substitution applies before defaults are inherited.
+
+Binary entries can share their installation mode in `[defaults.binary]`:
+
+```toml
+[defaults.binary]
+binary_mode = "symlink"
+```
+
+Individual binary entries can override `binary_mode`. Script entries currently
+have no reusable type-specific settings, so there is no `defaults.script`
+table.
 
 ## Multiple Python Tools
 

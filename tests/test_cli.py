@@ -871,8 +871,13 @@ script = "{script}"
     assert "echo second" in deployed
 
 
-def test_deploy_commands_export_environment_variables() -> None:
-    """Each deployment command should write requested environment variables."""
+def test_deploy_commands_export_environment_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each deployment command should write requested environment variables.
+
+    Args:
+        monkeypatch: Pytest helper used to set process environment variables.
+    """
+    monkeypatch.setenv("MANIFEST_VALUE", "expanded")
     runner = CliRunner()
 
     with runner.isolated_filesystem() as fs:
@@ -890,6 +895,10 @@ module_root = "modules"
 
 [environment]
 FROM_MANIFEST = "yes"
+FROM_EXPANDED = "$MANIFEST_VALUE"
+
+[alias]
+say-hello = "echo hello"
 
 [[tools]]
 type = "script"
@@ -963,7 +972,9 @@ script = "hello.sh"
     assert 'setenv RIPGREP_CONFIG_PATH "/etc/rg.conf"' in binary_modulefile
     assert 'setenv GREETING "hello"' in script_modulefile
     assert 'setenv FROM_MANIFEST "yes"' in environment_modulefile
+    assert 'setenv FROM_EXPANDED "expanded"' in environment_modulefile
     assert 'setenv FROM_CLI "yes"' in environment_modulefile
+    assert 'set-alias "say-hello" "echo hello"' in environment_modulefile
 
 
 def test_list_show_and_verify_commands_use_deployment_lockfiles() -> None:

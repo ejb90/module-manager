@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import subprocess
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import rich_click as click
-from click import Command
 
 from . import __version__
 from .config import AppConfig, load_config
@@ -46,7 +46,7 @@ click.rich_click.HEADER_TEXT = "module-manager"
 
 PATH = click.Path(path_type=Path)
 FILE_PATH = click.Path(path_type=Path, exists=True, dir_okay=False)
-ClickCommand = TypeVar("ClickCommand", bound=Command)
+ClickCommand = TypeVar("ClickCommand", bound=Callable[..., Any])
 AUTO_EXECUTABLES_FROM = "__module_manager_project_dependencies__"
 
 
@@ -860,6 +860,7 @@ def deploy_env(
             description=spec.description,
             homepage=spec.homepage,
             environment=tuple(combined_environment.items()),
+            aliases=spec.aliases,
             make_default=spec.make_default if make_default is None else make_default,
         )
 

@@ -1,8 +1,10 @@
 """Modulefile rendering and deployment helper tests."""
 
+import stat
 import subprocess
 from pathlib import Path
 from shlex import quote as shlex_quote
+from typing import Any
 
 import pytest
 
@@ -15,6 +17,7 @@ from module_manager.deploy import (
     deploy_script_tool,
     discover_url_requirements,
     generate_constraints,
+    install_binary,
     load_deployment_lock,
     load_environment_spec,
     project_dependency_names,
@@ -36,7 +39,7 @@ from module_manager.modulefile import (
 
 def test_tcl_quote_escapes_special_characters() -> None:
     """Tcl quoting should escape characters that affect modulefile parsing."""
-    assert tcl_quote('a "quoted" $value') == '"a \\"quoted\\" \\$value"'
+    assert tcl_quote('a "quoted" $value [command]') == '"a \\"quoted\\" \\$value \\[command\\]"'
 
 
 def test_render_modulefile_exports_path_and_root() -> None:
@@ -71,6 +74,22 @@ def test_render_modulefile_exports_configured_environment_variables() -> None:
 
     assert 'setenv RUFF_CACHE_DIR "/scratch/ruff"' in modulefile
     assert 'setenv MESSAGE "a \\"quote\\" \\$value"' in modulefile
+
+
+def test_render_modulefile_defines_configured_aliases() -> None:
+    """Rendered modulefiles should define configured shell aliases."""
+    modulefile = render_modulefile(
+        ModuleSpec(
+            name="dev-tools",
+            version="1.0.0",
+            root=Path("/prod/tools/dev-tools/1.0.0"),
+            bin_dir=Path("/prod/tools/dev-tools/1.0.0/bin"),
+            aliases=(("ll", "ls -la"), ("show-user", 'echo "$USER" [safe]')),
+        )
+    )
+
+    assert 'set-alias "ll" "ls -la"' in modulefile
+    assert 'set-alias "show-user" "echo \\"\\$USER\\" \\[safe\\]"' in modulefile
 
 
 def test_render_default_version_selects_version() -> None:
@@ -591,7 +610,7 @@ def test_deployment_requires_force_to_replace_an_existing_version(tmp_path: Path
     """
     source = tmp_path / "rg"
     source.write_text("first", encoding="utf-8")
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "name": "ripgrep",
         "version": "14.1.1",
         "module_root": tmp_path / "modules",
@@ -787,12 +806,14 @@ def test_uninstall_tool_dry_run_leaves_paths_in_place(tmp_path: Path) -> None:
     assert paths.modulefile.exists()
 
 
-def test_load_environment_spec_reads_manifest(tmp_path: Path) -> None:
+def test_load_environment_spec_reads_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Environment manifests should parse deploy-equivalent tool options.
 
     Args:
         tmp_path: Temporary manifest root.
+        monkeypatch: Pytest helper used to set process environment variables.
     """
+    monkeypatch.setenv("SCRATCH", "/scratch")
     manifest = tmp_path / "env.toml"
     manifest.write_text(
         """
@@ -803,7 +824,12 @@ module_root = "/prod/modulefiles"
 default = false
 
 [environment]
-DEV_TOOLS_CACHE = "/scratch/dev-tools"
+DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
+BRACED_CACHE = "${SCRATCH}/braced"
+
+[alias]
+ll = "ls -la"
+show-cache = "echo $DEV_TOOLS_CACHE"
 
 [[tools]]
 type = "python"
@@ -851,7 +877,11 @@ script = "scripts/helper"
     assert spec.prefix == Path("/prod/tools")
     assert spec.module_root == Path("/prod/modulefiles")
     assert not spec.make_default
-    assert spec.environment == (("DEV_TOOLS_CACHE", "/scratch/dev-tools"),)
+    assert spec.environment == (
+        ("DEV_TOOLS_CACHE", "/scratch/dev-tools"),
+        ("BRACED_CACHE", "/scratch/braced"),
+    )
+    assert spec.aliases == (("ll", "ls -la"), ("show-cache", "echo $DEV_TOOLS_CACHE"))
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].with_packages == ("ruff-lsp==0.1",)
     assert spec.tools[0].with_requirements == (str(tmp_path / "requirements.txt"),)
@@ -912,6 +942,66 @@ package = "dev-tools=={version}"
     assert spec.tools[0].package == "dev-tools==1.2.3"
 
 
+def test_load_environment_spec_applies_type_defaults(tmp_path: Path) -> None:
+    """Tool fields should override reusable defaults for their declared type.
+
+    Args:
+        tmp_path: Temporary manifest root.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        """
+name = "dev-tools"
+version = "1.0.0"
+
+[defaults.python]
+python = "{python}"
+indexes = ["https://packages.example/simple"]
+constraints = ["constraints.txt"]
+no_cache = true
+verbose = 2
+
+[defaults.binary]
+binary_mode = "symlink"
+
+[[tools]]
+type = "python"
+name = "ruff"
+package = "ruff==0.8.0"
+
+[[tools]]
+type = "python"
+name = "mypy"
+package = "mypy==1.18.2"
+python = "3.14"
+indexes = []
+constraints = ["mypy-constraints.txt"]
+no_cache = false
+verbose = 0
+
+[[tools]]
+type = "binary"
+name = "large-tool"
+binary = "large-tool"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    spec = load_environment_spec(manifest, {"python": "3.13"})
+
+    assert spec.tools[0].python == "3.13"
+    assert spec.tools[0].indexes == ("https://packages.example/simple",)
+    assert spec.tools[0].constraints == (str(tmp_path / "constraints.txt"),)
+    assert spec.tools[0].no_cache
+    assert spec.tools[0].verbose == 2
+    assert spec.tools[1].python == "3.14"
+    assert spec.tools[1].indexes == ()
+    assert spec.tools[1].constraints == (str(tmp_path / "mypy-constraints.txt"),)
+    assert not spec.tools[1].no_cache
+    assert spec.tools[1].verbose == 0
+    assert spec.tools[2].binary_mode == "symlink"
+
+
 @pytest.mark.parametrize(
     ("content", "variables", "message"),
     [
@@ -942,6 +1032,81 @@ def test_load_environment_spec_rejects_invalid_manifest_variables(
 
     with pytest.raises(ValueError, match=message):
         load_environment_spec(manifest, variables)
+
+
+@pytest.mark.parametrize(
+    ("alias_table", "message"),
+    [
+        ("[alias]\nll = 42", "alias must be a table of string values"),
+        ('[alias]\n"bad name" = "echo bad"', "Invalid alias name"),
+        ('[alias]\n"" = "echo bad"', "Invalid alias name"),
+    ],
+)
+def test_load_environment_spec_rejects_invalid_aliases(
+    tmp_path: Path,
+    alias_table: str,
+    message: str,
+) -> None:
+    """Collective manifests should reject invalid alias tables.
+
+    Args:
+        tmp_path: Temporary manifest root.
+        alias_table: Alias table content under test.
+        message: Expected validation error text.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        f'name = "x"\nversion = "1"\n{alias_table}\n[[tools]]\ntype = "script"\nname = "x"\nscript = "x"',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=message):
+        load_environment_spec(manifest)
+
+
+@pytest.mark.parametrize(
+    ("defaults", "tool", "message"),
+    [
+        ('defaults = "bad"', 'type = "script"\nname = "x"\nscript = "x"', "defaults must be a table"),
+        (
+            '[defaults.rust]\ntoolchain = "stable"',
+            'type = "script"\nname = "x"\nscript = "x"',
+            "unsupported tool type: rust",
+        ),
+        (
+            '[defaults.python]\npackage = "ruff"',
+            'type = "python"\nname = "ruff"\npackage = "ruff"',
+            "defaults.python.package is not a supported default",
+        ),
+        (
+            '[defaults.python]\nindexes = "bad"',
+            'type = "python"\nname = "ruff"\npackage = "ruff"',
+            "indexes must be a list of strings",
+        ),
+    ],
+)
+def test_load_environment_spec_rejects_invalid_tool_defaults(
+    tmp_path: Path,
+    defaults: str,
+    tool: str,
+    message: str,
+) -> None:
+    """Collective manifests should reject malformed or unknown defaults.
+
+    Args:
+        tmp_path: Temporary manifest root.
+        defaults: Defaults table content under test.
+        tool: Tool table content used to complete the manifest.
+        message: Expected validation error text.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        f'name = "x"\nversion = "1"\n{defaults}\n[[tools]]\n{tool}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=message):
+        load_environment_spec(manifest)
 
 
 def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> None:
@@ -987,6 +1152,10 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
             'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\nname = "ruff"\npackage = "ruff"\nforce = true',
             "force was renamed to uv_force",
         ),
+        (
+            ('name = "x"\nversion = "1"\n[[tools]]\ntype = "binary"\nname = "rg"\nbinary = "rg"\nbinary_mode = "move"'),
+            "binary_mode must be one of",
+        ),
     ]
 
     for index, (content, message) in enumerate(cases):
@@ -1012,6 +1181,9 @@ def test_deploy_environment_writes_shared_module(tmp_path: Path) -> None:
 name = "dev-tools"
 version = "2026.05"
 
+[alias]
+find-text = "rg --hidden"
+
 [[tools]]
 type = "binary"
 name = "ripgrep"
@@ -1035,8 +1207,91 @@ script = "{script}"
     assert (result.paths.bin_dir / "ripgrep").exists()
     assert (result.paths.bin_dir / "helper").exists()
     assert result.paths.modulefile.exists()
+    assert 'set-alias "find-text" "rg --hidden"' in result.paths.modulefile.read_text(encoding="utf-8")
+    assert load_deployment_lock(result.paths).data["metadata"]["aliases"] == {"find-text": "rg --hidden"}
     assert result.paths.default_version_file is not None
     assert result.paths.default_version_file.exists()
+
+
+@pytest.mark.parametrize(
+    ("mode", "is_symlink", "shares_inode"),
+    [
+        (None, False, False),
+        ("symlink", True, True),
+        ("hardlink", False, True),
+    ],
+)
+def test_deploy_environment_installs_binary_with_selected_mode(
+    tmp_path: Path,
+    mode: str | None,
+    is_symlink: bool,
+    shares_inode: bool,
+) -> None:
+    """Collective binary entries should support copy and link modes.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        mode: Explicit binary mode, or `None` to test the default.
+        is_symlink: Whether the deployed binary should be a symbolic link.
+        shares_inode: Whether the deployed binary should share its source inode.
+    """
+    binary = tmp_path / "large-tool"
+    binary.write_text("binary", encoding="utf-8")
+    binary.chmod(0o751)
+    source_mode = stat.S_IMODE(binary.stat().st_mode)
+    mode_line = f'binary_mode = "{mode}"' if mode else ""
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        f"""
+name = "large-tools"
+version = "1.0.0"
+
+[[tools]]
+type = "binary"
+name = "large-tool"
+binary = "{binary}"
+{mode_line}
+""".strip(),
+        encoding="utf-8",
+    )
+    spec = load_environment_spec(manifest)
+
+    result = deploy_environment(
+        spec=spec,
+        module_root=tmp_path / "modules",
+        prefix=tmp_path / "tools",
+    )
+
+    selected_mode = mode or "copy"
+    target = result.paths.bin_dir / "large-tool"
+    tool_metadata = load_deployment_lock(result.paths).data["metadata"]["tools"][0]
+    assert spec.tools[0].binary_mode == selected_mode
+    assert target.is_symlink() is is_symlink
+    assert target.samefile(binary) is shares_inode
+    assert stat.S_IMODE(binary.stat().st_mode) == source_mode
+    assert any(action.startswith(f"{selected_mode} binary large-tool:") for action in result.actions)
+    assert tool_metadata["binary"] == str(binary)
+    assert tool_metadata["binary_mode"] == selected_mode
+
+
+@pytest.mark.parametrize("mode", ["symlink", "hardlink"])
+def test_install_binary_link_modes_require_executable_source(tmp_path: Path, mode: str) -> None:
+    """Link modes should not change a non-executable source's permissions.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        mode: Link mode under test.
+    """
+    source = tmp_path / "large-tool"
+    target = tmp_path / "bin" / "large-tool"
+    source.write_text("binary", encoding="utf-8")
+    source.chmod(0o640)
+
+    with pytest.raises(PermissionError, match="must already be executable"):
+        install_binary(source, target, mode)
+
+    assert stat.S_IMODE(source.stat().st_mode) == 0o640
+    assert not target.exists()
 
 
 def test_deploy_environment_installs_python_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1067,16 +1322,19 @@ def test_deploy_environment_installs_python_tool(tmp_path: Path, monkeypatch: py
 name = "dev-tools"
 version = "2026.05"
 
+[defaults.python]
+python = "3.12"
+default_index = "https://default.example/simple"
+no_index = true
+constraints = ["constraints.txt"]
+native_tls = true
+
 [[tools]]
 type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
 with = ["ruff-lsp==0.1"]
 with_requirements = ["requirements.txt"]
-python = "3.12"
-default_index = "https://default.example/simple"
-no_index = true
-constraints = ["constraints.txt"]
 overrides = ["overrides.txt"]
 no_cache = true
 refresh = true
@@ -1084,7 +1342,6 @@ refresh_packages = ["ruff"]
 uv_force = true
 lfs = true
 verbose = 2
-native_tls = true
 no_config = true
 editable = true
 with_editable = ["ruff-lsp", "ruff-format"]

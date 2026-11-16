@@ -22,6 +22,7 @@ from .modulefile import (
     parse_environment_variables,
     render_default_version,
     render_modulefile,
+    validate_aliases,
 )
 
 
@@ -35,6 +36,39 @@ class ConstraintGenerationError(RuntimeError):
 
 VALID_INDEX_STRATEGIES = ("first-index", "unsafe-first-match", "unsafe-best-match")
 VALID_KEYRING_PROVIDERS = ("disabled", "subprocess")
+VALID_BINARY_MODES = ("copy", "symlink", "hardlink")
+TOOL_DEFAULT_FIELDS = {
+    "python": frozenset(
+        {
+            "with",
+            "with_requirements",
+            "uv_config_file",
+            "uv_executable",
+            "python",
+            "indexes",
+            "default_index",
+            "find_links",
+            "no_index",
+            "index_strategy",
+            "keyring_provider",
+            "constraints",
+            "no_cache",
+            "refresh",
+            "refresh_packages",
+            "uv_force",
+            "reinstall",
+            "lfs",
+            "verbose",
+            "native_tls",
+            "no_config",
+            "overrides",
+            "editable",
+            "with_editable",
+            "with_executables_from",
+        }
+    ),
+    "binary": frozenset({"binary_mode"}),
+}
 MANIFEST_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
@@ -119,7 +153,8 @@ class EnvironmentToolSpec:
         with_requirements: Requirements files passed to uv.
         uv_config_file: uv configuration file passed to `uv tool`.
         uv_executable: uv executable path.
-        binary: Executable binary path to copy into the shared `bin` directory.
+        binary: Executable binary path to install into the shared `bin` directory.
+        binary_mode: Whether to copy, symlink, or hard-link the binary.
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
@@ -156,6 +191,7 @@ class EnvironmentToolSpec:
     uv_config_file: Path | None = None
     uv_executable: Path | None = None
     binary: Path | None = None
+    binary_mode: str = "copy"
     script: Path | None = None
     python: str | None = None
     indexes: tuple[str, ...] = ()
@@ -195,6 +231,7 @@ class EnvironmentSpec:
         description: Optional environment module description.
         homepage: Optional homepage shown in module help.
         environment: Environment variables exported when the module loads.
+        aliases: Shell aliases defined when the module loads.
         make_default: Whether to make this environment version the default.
     """
 
@@ -206,6 +243,7 @@ class EnvironmentSpec:
     description: str | None = None
     homepage: str | None = None
     environment: tuple[tuple[str, str], ...] = ()
+    aliases: tuple[tuple[str, str], ...] = ()
     make_default: bool = True
 
 
@@ -825,6 +863,44 @@ def copy_executable(source: Path, target: Path, dry_run: bool = False) -> None:
     target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def install_binary(source: Path, target: Path, mode: str = "copy") -> None:
+    """Install a binary by copying, symlinking, or hard-linking it.
+
+    Link modes preserve the source inode's permissions rather than changing
+    them, so their source must already be executable.
+
+    Args:
+        source: Existing source binary.
+        target: Destination path in the deployed `bin` directory.
+        mode: Installation mode: `copy`, `symlink`, or `hardlink`.
+
+    Raises:
+        FileNotFoundError: If a link source is not an existing file.
+        PermissionError: If a link source is not executable.
+        ValueError: If the installation mode is unsupported.
+    """
+    if mode == "copy":
+        copy_executable(source, target)
+        return
+    if mode not in VALID_BINARY_MODES:
+        msg = f"binary mode must be one of: {', '.join(VALID_BINARY_MODES)}"
+        raise ValueError(msg)
+
+    source_path = source.absolute()
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
+    executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    if not source_path.stat().st_mode & executable_bits:
+        msg = f"Linked binary source must already be executable: {source_path}"
+        raise PermissionError(msg)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "symlink":
+        target.symlink_to(source_path)
+    else:
+        os.link(source_path, target)
+
+
 def prune_empty_dir(path: Path, stop: Path) -> None:
     """Remove empty parent directories up to, but not including, a stop path.
 
@@ -1054,7 +1130,8 @@ def optional_environment(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
         data: Top-level manifest data.
 
     Returns:
-        Validated environment variable name/value pairs.
+        Validated environment variable name/value pairs, with shell-style
+        environment variable references expanded from the current process.
 
     Raises:
         TypeError: If the environment table is not a mapping of strings.
@@ -1067,8 +1144,36 @@ def optional_environment(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     ):
         msg = "environment must be a table of string values"
         raise TypeError(msg)
+    expanded = {name: os.path.expandvars(item) for name, item in value.items()}
     try:
-        return parse_environment_variables(tuple(f"{name}={item}" for name, item in value.items()))
+        return parse_environment_variables(tuple(f"{name}={item}" for name, item in expanded.items()))
+    except ValueError as error:
+        raise TypeError(str(error)) from error
+
+
+def optional_aliases(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Read aliases from a collective environment manifest.
+
+    Args:
+        data: Top-level manifest data.
+
+    Returns:
+        Validated alias name and command pairs.
+
+    Raises:
+        TypeError: If the alias table is not a mapping of valid names to
+            strings.
+    """
+    value = data.get("alias")
+    if value is None:
+        return ()
+    if not isinstance(value, dict) or not all(
+        isinstance(name, str) and isinstance(item, str) for name, item in value.items()
+    ):
+        msg = "alias must be a table of string values"
+        raise TypeError(msg)
+    try:
+        return validate_aliases(tuple(value.items()))
     except ValueError as error:
         raise TypeError(str(error)) from error
 
@@ -1162,6 +1267,12 @@ def substitute_manifest_variables(value: str, variables: Mapping[str, str]) -> s
     position = 0
     while position < len(value):
         character = value[position]
+        if character == "$" and position + 1 < len(value) and value[position + 1] == "{":
+            closing = value.find("}", position + 2)
+            if closing >= 0 and MANIFEST_VARIABLE_NAME.fullmatch(value[position + 2 : closing]):
+                rendered.append(value[position : closing + 1])
+                position = closing + 1
+                continue
         if character == "{":
             if position + 1 < len(value) and value[position + 1] == "{":
                 rendered.append("{")
@@ -1212,6 +1323,64 @@ def substitute_manifest_data(value: object, variables: Mapping[str, str]) -> obj
     return value
 
 
+def parse_tool_defaults(data: dict[str, Any]) -> dict[str, dict[str, object]]:
+    """Read and validate type-specific collective tool defaults.
+
+    Args:
+        data: Parsed top-level manifest data.
+
+    Returns:
+        Defaults keyed by supported tool type.
+
+    Raises:
+        TypeError: If `defaults` is malformed or contains unsupported groups or
+            fields.
+    """
+    value = data.get("defaults")
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        msg = "defaults must be a table"
+        raise TypeError(msg)
+
+    unsupported_groups = sorted(set(value) - set(TOOL_DEFAULT_FIELDS))
+    if unsupported_groups:
+        msg = f"defaults contains unsupported tool type: {unsupported_groups[0]}"
+        raise TypeError(msg)
+
+    defaults: dict[str, dict[str, object]] = {}
+    for tool_type, fields in value.items():
+        if not isinstance(fields, dict):
+            msg = f"defaults.{tool_type} must be a table"
+            raise TypeError(msg)
+        unsupported_fields = sorted(set(fields) - TOOL_DEFAULT_FIELDS[tool_type])
+        if unsupported_fields:
+            msg = f"defaults.{tool_type}.{unsupported_fields[0]} is not a supported default"
+            raise TypeError(msg)
+        defaults[tool_type] = dict(fields)
+    return defaults
+
+
+def apply_tool_defaults(data: object, defaults: Mapping[str, Mapping[str, object]]) -> object:
+    """Apply defaults for a collective tool's declared type.
+
+    Explicit tool fields replace inherited values, including lists and falsey
+    scalar values.
+
+    Args:
+        data: Raw collective tool entry.
+        defaults: Validated defaults keyed by tool type.
+
+    Returns:
+        Tool data with matching defaults applied, or the original value when it
+        is not a table with a string `type` field.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("type"), str):
+        return data
+    inherited = defaults.get(data["type"], {})
+    return {**inherited, **data}
+
+
 def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None) -> EnvironmentSpec:
     """Load a collective environment specification from TOML.
 
@@ -1230,16 +1399,23 @@ def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None
     """
     manifest_path = path.expanduser()
     base_dir = manifest_path.parent
-    data = substitute_manifest_data(
-        tomllib.loads(manifest_path.read_text(encoding="utf-8")),
-        variables or {},
+    data = cast(
+        dict[str, Any],
+        substitute_manifest_data(
+            tomllib.loads(manifest_path.read_text(encoding="utf-8")),
+            variables or {},
+        ),
     )
     raw_tools = data.get("tools")
     if not isinstance(raw_tools, list):
         msg = "tools must be a list of tables"
         raise TypeError(msg)
 
-    tools = tuple(parse_environment_tool(item, base_dir, index) for index, item in enumerate(raw_tools, start=1))
+    defaults = parse_tool_defaults(data)
+    tools = tuple(
+        parse_environment_tool(apply_tool_defaults(item, defaults), base_dir, index)
+        for index, item in enumerate(raw_tools, start=1)
+    )
     if not tools:
         msg = "tools must contain at least one entry"
         raise TypeError(msg)
@@ -1253,6 +1429,7 @@ def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None
         description=optional_string(data, "description"),
         homepage=optional_string(data, "homepage"),
         environment=optional_environment(data),
+        aliases=optional_aliases(data),
         make_default=optional_bool(data, "default", True),
     )
 
@@ -1280,6 +1457,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
     if "force" in data:
         msg = f"tools[{index}].force was renamed to uv_force"
         raise TypeError(msg)
+    binary_mode = optional_string(data, "binary_mode")
     tool = EnvironmentToolSpec(
         tool_type=tool_type,
         name=name,
@@ -1290,6 +1468,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         uv_config_file=optional_manifest_path(data, "uv_config_file", base_dir),
         uv_executable=optional_manifest_path(data, "uv_executable", base_dir),
         binary=optional_manifest_path(data, "binary", base_dir),
+        binary_mode=binary_mode if binary_mode is not None else "copy",
         script=optional_manifest_path(data, "script", base_dir),
         python=optional_string(data, "python"),
         indexes=optional_string_tuple(data, "indexes"),
@@ -1343,6 +1522,9 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
     if tool.tool_type == "binary":
         if not tool.binary:
             msg = f"tools[{index}].binary is required for binary tools"
+            raise TypeError(msg)
+        if tool.binary_mode not in VALID_BINARY_MODES:
+            msg = f"tools[{index}].binary_mode must be one of: {', '.join(VALID_BINARY_MODES)}"
             raise TypeError(msg)
         return
     if tool.tool_type == "script":
@@ -1411,7 +1593,7 @@ def environment_actions(
                 f"{shlex.join(command)}"
             )
         elif tool.tool_type == "binary" and tool.binary:
-            actions.append(f"copy binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
+            actions.append(f"{tool.binary_mode} binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
         elif tool.tool_type == "script" and tool.script:
             actions.append(f"copy script {tool.name}: {tool.script} -> {paths.bin_dir / tool.name}")
 
@@ -1497,7 +1679,7 @@ def deploy_environment(
                     env=uv_install_environment(tool_dir, paths.bin_dir),
                 )
             elif tool.tool_type == "binary" and tool.binary:
-                copy_executable(tool.binary, paths.bin_dir / tool.name)
+                install_binary(tool.binary, paths.bin_dir / tool.name, tool.binary_mode)
             elif tool.tool_type == "script" and tool.script:
                 copy_executable(tool.script, paths.bin_dir / tool.name)
 
@@ -1513,6 +1695,7 @@ def deploy_environment(
                 homepage=spec.homepage,
                 install_hint=install_hint,
                 environment=spec.environment,
+                aliases=spec.aliases,
             )
         )
         write_text(paths.modulefile, modulefile)
@@ -1523,12 +1706,15 @@ def deploy_environment(
             kind="environment",
             metadata={
                 "environment": dict(spec.environment),
+                "aliases": dict(spec.aliases),
                 "tools": [
                     {
                         "name": tool.name,
                         "type": tool.tool_type,
                         "version": tool.version,
                         "package": tool.package,
+                        "binary": str(tool.binary) if tool.binary else None,
+                        "binary_mode": tool.binary_mode if tool.binary else None,
                     }
                     for tool in spec.tools
                 ],
