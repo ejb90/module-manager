@@ -56,6 +56,7 @@ type = "binary"
 name = "ripgrep"
 version = "14.1.1"
 binary = "./target/release/rg"
+binary_mode = "copy"
 
 [[tools]]
 type = "script"
@@ -128,6 +129,21 @@ show-cache = "echo $DEV_TOOLS_CACHE"
 
 Relative `binary` and `script` paths are resolved relative to the manifest file.
 Relative Python `constraints` paths are resolved the same way.
+
+Binary entries use `binary_mode = "copy"` by default. Set it to `"symlink"`
+to create an absolute symbolic link to a large binary, or `"hardlink"` to
+create a hard link without duplicating its data. Link sources must already be
+executable. Symbolic links depend on the original path remaining available;
+hard links require the source and deployment prefix to be on the same
+filesystem.
+
+```toml
+[[tools]]
+type = "binary"
+name = "large-solver"
+binary = "/shared/build/large-solver"
+binary_mode = "symlink"
+```
 
 For a Python tool, set `with_executables_from` to expose executable entry
 points from its dependencies as well. It is a list of package names and maps to

@@ -1,5 +1,6 @@
 """Modulefile rendering and deployment helper tests."""
 
+import stat
 import subprocess
 from pathlib import Path
 from shlex import quote as shlex_quote
@@ -15,6 +16,7 @@ from module_manager.deploy import (
     deploy_script_tool,
     discover_url_requirements,
     generate_constraints,
+    install_binary,
     load_deployment_lock,
     load_environment_spec,
     project_dependency_names,
@@ -1044,6 +1046,10 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
             'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\nname = "ruff"\npackage = "ruff"\nforce = true',
             "force was renamed to uv_force",
         ),
+        (
+            ('name = "x"\nversion = "1"\n[[tools]]\ntype = "binary"\nname = "rg"\nbinary = "rg"\nbinary_mode = "move"'),
+            "binary_mode must be one of",
+        ),
     ]
 
     for index, (content, message) in enumerate(cases):
@@ -1099,6 +1105,87 @@ script = "{script}"
     assert load_deployment_lock(result.paths).data["metadata"]["aliases"] == {"find-text": "rg --hidden"}
     assert result.paths.default_version_file is not None
     assert result.paths.default_version_file.exists()
+
+
+@pytest.mark.parametrize(
+    ("mode", "is_symlink", "shares_inode"),
+    [
+        (None, False, False),
+        ("symlink", True, True),
+        ("hardlink", False, True),
+    ],
+)
+def test_deploy_environment_installs_binary_with_selected_mode(
+    tmp_path: Path,
+    mode: str | None,
+    is_symlink: bool,
+    shares_inode: bool,
+) -> None:
+    """Collective binary entries should support copy and link modes.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        mode: Explicit binary mode, or `None` to test the default.
+        is_symlink: Whether the deployed binary should be a symbolic link.
+        shares_inode: Whether the deployed binary should share its source inode.
+    """
+    binary = tmp_path / "large-tool"
+    binary.write_text("binary", encoding="utf-8")
+    binary.chmod(0o751)
+    source_mode = stat.S_IMODE(binary.stat().st_mode)
+    mode_line = f'binary_mode = "{mode}"' if mode else ""
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        f"""
+name = "large-tools"
+version = "1.0.0"
+
+[[tools]]
+type = "binary"
+name = "large-tool"
+binary = "{binary}"
+{mode_line}
+""".strip(),
+        encoding="utf-8",
+    )
+    spec = load_environment_spec(manifest)
+
+    result = deploy_environment(
+        spec=spec,
+        module_root=tmp_path / "modules",
+        prefix=tmp_path / "tools",
+    )
+
+    selected_mode = mode or "copy"
+    target = result.paths.bin_dir / "large-tool"
+    tool_metadata = load_deployment_lock(result.paths).data["metadata"]["tools"][0]
+    assert spec.tools[0].binary_mode == selected_mode
+    assert target.is_symlink() is is_symlink
+    assert target.samefile(binary) is shares_inode
+    assert stat.S_IMODE(binary.stat().st_mode) == source_mode
+    assert any(action.startswith(f"{selected_mode} binary large-tool:") for action in result.actions)
+    assert tool_metadata["binary"] == str(binary)
+    assert tool_metadata["binary_mode"] == selected_mode
+
+
+@pytest.mark.parametrize("mode", ["symlink", "hardlink"])
+def test_install_binary_link_modes_require_executable_source(tmp_path: Path, mode: str) -> None:
+    """Link modes should not change a non-executable source's permissions.
+
+    Args:
+        tmp_path: Temporary deployment root.
+        mode: Link mode under test.
+    """
+    source = tmp_path / "large-tool"
+    target = tmp_path / "bin" / "large-tool"
+    source.write_text("binary", encoding="utf-8")
+    source.chmod(0o640)
+
+    with pytest.raises(PermissionError, match="must already be executable"):
+        install_binary(source, target, mode)
+
+    assert stat.S_IMODE(source.stat().st_mode) == 0o640
+    assert not target.exists()
 
 
 def test_deploy_environment_installs_python_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

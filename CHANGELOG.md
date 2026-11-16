@@ -7,6 +7,8 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Add an `[alias]` table to collective manifests for defining shell aliases.
+- Add `binary_mode` to collective binary entries with `copy`, `symlink`, and
+  `hardlink` options.
 
 ### Fixed
 

@@ -36,6 +36,7 @@ class ConstraintGenerationError(RuntimeError):
 
 VALID_INDEX_STRATEGIES = ("first-index", "unsafe-first-match", "unsafe-best-match")
 VALID_KEYRING_PROVIDERS = ("disabled", "subprocess")
+VALID_BINARY_MODES = ("copy", "symlink", "hardlink")
 MANIFEST_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
@@ -120,7 +121,8 @@ class EnvironmentToolSpec:
         with_requirements: Requirements files passed to uv.
         uv_config_file: uv configuration file passed to `uv tool`.
         uv_executable: uv executable path.
-        binary: Executable binary path to copy into the shared `bin` directory.
+        binary: Executable binary path to install into the shared `bin` directory.
+        binary_mode: Whether to copy, symlink, or hard-link the binary.
         script: Shell script path to copy into the shared `bin` directory.
         python: Optional Python interpreter or version passed to uv.
         indexes: Additional package index URLs passed to uv.
@@ -157,6 +159,7 @@ class EnvironmentToolSpec:
     uv_config_file: Path | None = None
     uv_executable: Path | None = None
     binary: Path | None = None
+    binary_mode: str = "copy"
     script: Path | None = None
     python: str | None = None
     indexes: tuple[str, ...] = ()
@@ -828,6 +831,44 @@ def copy_executable(source: Path, target: Path, dry_run: bool = False) -> None:
     target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def install_binary(source: Path, target: Path, mode: str = "copy") -> None:
+    """Install a binary by copying, symlinking, or hard-linking it.
+
+    Link modes preserve the source inode's permissions rather than changing
+    them, so their source must already be executable.
+
+    Args:
+        source: Existing source binary.
+        target: Destination path in the deployed `bin` directory.
+        mode: Installation mode: `copy`, `symlink`, or `hardlink`.
+
+    Raises:
+        FileNotFoundError: If a link source is not an existing file.
+        PermissionError: If a link source is not executable.
+        ValueError: If the installation mode is unsupported.
+    """
+    if mode == "copy":
+        copy_executable(source, target)
+        return
+    if mode not in VALID_BINARY_MODES:
+        msg = f"binary mode must be one of: {', '.join(VALID_BINARY_MODES)}"
+        raise ValueError(msg)
+
+    source_path = source.absolute()
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
+    executable_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    if not source_path.stat().st_mode & executable_bits:
+        msg = f"Linked binary source must already be executable: {source_path}"
+        raise PermissionError(msg)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if mode == "symlink":
+        target.symlink_to(source_path)
+    else:
+        os.link(source_path, target)
+
+
 def prune_empty_dir(path: Path, stop: Path) -> None:
     """Remove empty parent directories up to, but not including, a stop path.
 
@@ -1319,6 +1360,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
     if "force" in data:
         msg = f"tools[{index}].force was renamed to uv_force"
         raise TypeError(msg)
+    binary_mode = optional_string(data, "binary_mode")
     tool = EnvironmentToolSpec(
         tool_type=tool_type,
         name=name,
@@ -1329,6 +1371,7 @@ def parse_environment_tool(data: object, base_dir: Path, index: int) -> Environm
         uv_config_file=optional_manifest_path(data, "uv_config_file", base_dir),
         uv_executable=optional_manifest_path(data, "uv_executable", base_dir),
         binary=optional_manifest_path(data, "binary", base_dir),
+        binary_mode=binary_mode if binary_mode is not None else "copy",
         script=optional_manifest_path(data, "script", base_dir),
         python=optional_string(data, "python"),
         indexes=optional_string_tuple(data, "indexes"),
@@ -1382,6 +1425,9 @@ def validate_environment_tool(tool: EnvironmentToolSpec, index: int) -> None:
     if tool.tool_type == "binary":
         if not tool.binary:
             msg = f"tools[{index}].binary is required for binary tools"
+            raise TypeError(msg)
+        if tool.binary_mode not in VALID_BINARY_MODES:
+            msg = f"tools[{index}].binary_mode must be one of: {', '.join(VALID_BINARY_MODES)}"
             raise TypeError(msg)
         return
     if tool.tool_type == "script":
@@ -1450,7 +1496,7 @@ def environment_actions(
                 f"{shlex.join(command)}"
             )
         elif tool.tool_type == "binary" and tool.binary:
-            actions.append(f"copy binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
+            actions.append(f"{tool.binary_mode} binary {tool.name}: {tool.binary} -> {paths.bin_dir / tool.name}")
         elif tool.tool_type == "script" and tool.script:
             actions.append(f"copy script {tool.name}: {tool.script} -> {paths.bin_dir / tool.name}")
 
@@ -1536,7 +1582,7 @@ def deploy_environment(
                     env=uv_install_environment(tool_dir, paths.bin_dir),
                 )
             elif tool.tool_type == "binary" and tool.binary:
-                copy_executable(tool.binary, paths.bin_dir / tool.name)
+                install_binary(tool.binary, paths.bin_dir / tool.name, tool.binary_mode)
             elif tool.tool_type == "script" and tool.script:
                 copy_executable(tool.script, paths.bin_dir / tool.name)
 
@@ -1570,6 +1616,8 @@ def deploy_environment(
                         "type": tool.tool_type,
                         "version": tool.version,
                         "package": tool.package,
+                        "binary": str(tool.binary) if tool.binary else None,
+                        "binary_mode": tool.binary_mode if tool.binary else None,
                     }
                     for tool in spec.tools
                 ],
