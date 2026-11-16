@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.20.0] - 2026-11-16
+
+### Added
+
+- Add `expose_python` to collective Python tools so a named command can run
+  scripts with the tool's isolated interpreter and installed packages.
+
 ## [0.19.0] - 2026-11-16
 
 ### Added

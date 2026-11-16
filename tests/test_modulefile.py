@@ -836,6 +836,7 @@ type = "python"
 name = "ruff"
 version = "0.8.0"
 package = "ruff==0.8.0"
+expose_python = "ruff-python"
 with = ["ruff-lsp==0.1"]
 with_requirements = ["requirements.txt"]
 python = "3.12"
@@ -883,6 +884,7 @@ script = "scripts/helper"
     )
     assert spec.aliases == (("ll", "ls -la"), ("show-cache", "echo $DEV_TOOLS_CACHE"))
     assert spec.tools[0].package == "ruff==0.8.0"
+    assert spec.tools[0].expose_python == "ruff-python"
     assert spec.tools[0].with_packages == ("ruff-lsp==0.1",)
     assert spec.tools[0].with_requirements == (str(tmp_path / "requirements.txt"),)
     assert spec.tools[0].indexes == ("https://packages.example/simple",)
@@ -1156,6 +1158,43 @@ def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> N
             ('name = "x"\nversion = "1"\n[[tools]]\ntype = "binary"\nname = "rg"\nbinary = "rg"\nbinary_mode = "move"'),
             "binary_mode must be one of",
         ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\n'
+                'name = "ruff"\npackage = "ruff"\nexpose_python = "../python"'
+            ),
+            "expose_python must be a safe executable name",
+        ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\n'
+                'name = "ruff"\npackage = "ruff"\nexpose_python = ""'
+            ),
+            "expose_python must be a safe executable name",
+        ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "script"\n'
+                'name = "helper"\nscript = "helper"\nexpose_python = "python"'
+            ),
+            "expose_python is only valid for python tools",
+        ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\n'
+                'name = "ruff"\npackage = "ruff"\nexpose_python = "python"\n'
+                '[[tools]]\ntype = "python"\nname = "mypy"\npackage = "mypy"\nexpose_python = "python"'
+            ),
+            "expose_python name 'python' is used more than once",
+        ),
+        (
+            (
+                'name = "x"\nversion = "1"\n[[tools]]\ntype = "python"\n'
+                'name = "ruff"\npackage = "ruff"\nexpose_python = "helper"\n'
+                '[[tools]]\ntype = "script"\nname = "helper"\nscript = "helper"'
+            ),
+            "expose_python name 'helper' conflicts with a tool name",
+        ),
     ]
 
     for index, (content, message) in enumerate(cases):
@@ -1308,6 +1347,11 @@ def test_deploy_environment_installs_python_tool(tmp_path: Path, monkeypatch: py
         """Record the subprocess call made by deployment."""
         assert check
         calls.append((command, env))
+        environment_dir = Path(env["UV_TOOL_DIR"]) / "ruff"
+        interpreter = environment_dir / "bin" / "python"
+        interpreter.parent.mkdir(parents=True)
+        interpreter.write_text("python", encoding="utf-8")
+        (environment_dir / "uv-receipt.toml").write_text("[tool]\n", encoding="utf-8")
 
     def fake_require_executable(name: str) -> str:
         """Record executable availability checks."""
@@ -1333,6 +1377,7 @@ native_tls = true
 type = "python"
 name = "ruff"
 package = "ruff==0.8.0"
+expose_python = "ruff-python"
 with = ["ruff-lsp==0.1"]
 with_requirements = ["requirements.txt"]
 overrides = ["overrides.txt"]
@@ -1399,6 +1444,13 @@ uv_config_file = "uv.toml"
     assert executable_checks == [str(tmp_path / "custom-uv")]
     assert calls[0][1]["UV_TOOL_DIR"] == str(result.paths.install_root / "uv-tools")
     assert calls[0][1]["UV_TOOL_BIN_DIR"] == str(result.paths.bin_dir)
+    launcher = result.paths.bin_dir / "ruff-python"
+    assert launcher.stat().st_mode & 0o111
+    assert f'exec {result.paths.install_root / "uv-tools" / "ruff" / "bin" / "python"} "$@"' in launcher.read_text(
+        encoding="utf-8"
+    )
+    assert any(action.startswith("expose python ruff as:") for action in result.actions)
+    assert load_deployment_lock(result.paths).data["metadata"]["tools"][0]["expose_python"] == "ruff-python"
     assert result.paths.modulefile.exists()
 
 

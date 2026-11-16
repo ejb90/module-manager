@@ -113,3 +113,19 @@ literal until the alias is invoked.
 lint = "ruff check ."
 show-cache = "echo $DEV_TOOLS_CACHE"
 ```
+
+A collective Python tool can expose its isolated interpreter under an explicit
+command name:
+
+```toml
+[[tools]]
+type = "python"
+name = "ruff"
+package = "ruff==0.8.0"
+expose_python = "ruff-python"
+```
+
+After loading the module, `ruff-python script.py` runs the script with the same
+environment and imports as the installed `ruff` tool. Naming the command
+`python` intentionally places that interpreter first on `PATH` for the loaded
+module.

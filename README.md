@@ -80,6 +80,8 @@ the default remains `"copy"`.
 Use `[defaults.python]` to share Python deployment options across collective
 tool entries, and `[defaults.binary]` to share `binary_mode`. Values declared
 on an individual tool replace inherited defaults.
+Set `expose_python = "tool-python"` on a collective Python entry to expose a
+named interpreter that can run scripts with that tool's installed packages.
 
 Every completed deployment includes a `module-manager.lock.json` file with its
 metadata and generated-file checksums. Use `module-manager list --prefix PATH`,
