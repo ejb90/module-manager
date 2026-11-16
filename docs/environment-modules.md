@@ -96,9 +96,11 @@ module-manager verify ruff 0.8.0 --prefix /prod/tools --module-root /prod/module
 
 For collective environments, define variables in the manifest's
 `[environment]` table, or add them on the command line with `--env`. Command
-line values take precedence over a manifest variable with the same name.
+line values take precedence over a manifest variable with the same name. The
+manifest expands `$NAME` and `${NAME}` references from the environment running
+`module-manager`; `--env` values remain literal.
 
 ```toml
 [environment]
-DEV_TOOLS_CACHE = "/scratch/dev-tools"
+DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
 ```

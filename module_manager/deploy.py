@@ -1054,7 +1054,8 @@ def optional_environment(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
         data: Top-level manifest data.
 
     Returns:
-        Validated environment variable name/value pairs.
+        Validated environment variable name/value pairs, with shell-style
+        environment variable references expanded from the current process.
 
     Raises:
         TypeError: If the environment table is not a mapping of strings.
@@ -1067,8 +1068,9 @@ def optional_environment(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     ):
         msg = "environment must be a table of string values"
         raise TypeError(msg)
+    expanded = {name: os.path.expandvars(item) for name, item in value.items()}
     try:
-        return parse_environment_variables(tuple(f"{name}={item}" for name, item in value.items()))
+        return parse_environment_variables(tuple(f"{name}={item}" for name, item in expanded.items()))
     except ValueError as error:
         raise TypeError(str(error)) from error
 
@@ -1162,6 +1164,12 @@ def substitute_manifest_variables(value: str, variables: Mapping[str, str]) -> s
     position = 0
     while position < len(value):
         character = value[position]
+        if character == "$" and position + 1 < len(value) and value[position + 1] == "{":
+            closing = value.find("}", position + 2)
+            if closing >= 0 and MANIFEST_VARIABLE_NAME.fullmatch(value[position + 2 : closing]):
+                rendered.append(value[position : closing + 1])
+                position = closing + 1
+                continue
         if character == "{":
             if position + 1 < len(value) and value[position + 1] == "{":
                 rendered.append("{")

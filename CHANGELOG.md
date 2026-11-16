@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.19.0] - 2026-11-16
+
+### Fixed
+
+- Expand `$NAME` and `${NAME}` references in collective manifest
+  `[environment]` values from the deployment process environment.
+
 ## [0.18.0] - 2026-11-03
 
 ### Changed

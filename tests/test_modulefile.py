@@ -787,12 +787,14 @@ def test_uninstall_tool_dry_run_leaves_paths_in_place(tmp_path: Path) -> None:
     assert paths.modulefile.exists()
 
 
-def test_load_environment_spec_reads_manifest(tmp_path: Path) -> None:
+def test_load_environment_spec_reads_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Environment manifests should parse deploy-equivalent tool options.
 
     Args:
         tmp_path: Temporary manifest root.
+        monkeypatch: Pytest helper used to set process environment variables.
     """
+    monkeypatch.setenv("SCRATCH", "/scratch")
     manifest = tmp_path / "env.toml"
     manifest.write_text(
         """
@@ -803,7 +805,8 @@ module_root = "/prod/modulefiles"
 default = false
 
 [environment]
-DEV_TOOLS_CACHE = "/scratch/dev-tools"
+DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
+BRACED_CACHE = "${SCRATCH}/braced"
 
 [[tools]]
 type = "python"
@@ -851,7 +854,10 @@ script = "scripts/helper"
     assert spec.prefix == Path("/prod/tools")
     assert spec.module_root == Path("/prod/modulefiles")
     assert not spec.make_default
-    assert spec.environment == (("DEV_TOOLS_CACHE", "/scratch/dev-tools"),)
+    assert spec.environment == (
+        ("DEV_TOOLS_CACHE", "/scratch/dev-tools"),
+        ("BRACED_CACHE", "/scratch/braced"),
+    )
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].with_packages == ("ruff-lsp==0.1",)
     assert spec.tools[0].with_requirements == (str(tmp_path / "requirements.txt"),)

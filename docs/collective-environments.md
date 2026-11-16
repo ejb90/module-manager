@@ -96,10 +96,17 @@ module use /prod/modulefiles
 module load dev-tools
 ```
 
-The top-level `[environment]` table exports literal environment variables when
-the collective module loads. You can add or override values at deployment time
-with repeatable `--env NAME=VALUE` options; command-line values take precedence
-over variables in the manifest.
+The top-level `[environment]` table exports environment variables when the
+collective module loads. `$NAME` and `${NAME}` references in its values are
+expanded from the environment running `module-manager` before the modulefile is
+written. You can add or override values at deployment time with repeatable
+`--env NAME=VALUE` options; command-line values take precedence over variables
+in the manifest and remain literal.
+
+```toml
+[environment]
+DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
+```
 
 ```sh
 module-manager deploy-env --file dev-tools.toml --env PAGER=less
