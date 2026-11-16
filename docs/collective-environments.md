@@ -17,6 +17,10 @@ default = true
 [environment]
 DEV_TOOLS_CACHE = "/scratch/dev-tools"
 
+[alias]
+lint = "ruff check ."
+format = "ruff format ."
+
 [[tools]]
 type = "python"
 name = "ruff"
@@ -110,6 +114,16 @@ DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
 
 ```sh
 module-manager deploy-env --file dev-tools.toml --env PAGER=less
+```
+
+The top-level `[alias]` table defines shell aliases when the collective module
+loads. Alias commands are written literally, so shell variables and other shell
+expressions are evaluated when the alias is invoked.
+
+```toml
+[alias]
+lint = "ruff check ."
+show-cache = "echo $DEV_TOOLS_CACHE"
 ```
 
 Relative `binary` and `script` paths are resolved relative to the manifest file.

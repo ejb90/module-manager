@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ENVIRONMENT_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+ALIAS_NAME = re.compile(r"[^\s=]+\Z")
 
 
 def tcl_quote(value: str) -> str:
@@ -16,10 +17,12 @@ def tcl_quote(value: str) -> str:
         value: Raw string to quote for Tcl modulefile output.
 
     Returns:
-        A double-quoted Tcl string with backslashes, double quotes, and dollar
-        signs escaped.
+        A double-quoted Tcl string with backslashes, double quotes, dollar
+        signs, and square brackets escaped.
     """
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
+    escaped = (
+        value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("[", "\\[").replace("]", "\\]")
+    )
     return f'"{escaped}"'
 
 
@@ -51,6 +54,31 @@ def parse_environment_variables(values: tuple[str, ...]) -> tuple[tuple[str, str
     return tuple(variables)
 
 
+def validate_aliases(aliases: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    """Validate aliases for a generated modulefile.
+
+    Args:
+        aliases: Alias name and command pairs.
+
+    Returns:
+        The validated alias pairs.
+
+    Raises:
+        ValueError: If an alias name is empty, contains whitespace or an equals
+            sign, or occurs more than once.
+    """
+    names: set[str] = set()
+    for name, _ in aliases:
+        if not ALIAS_NAME.fullmatch(name):
+            msg = f"Invalid alias name {name!r}; names cannot contain whitespace or '='."
+            raise ValueError(msg)
+        if name in names:
+            msg = f"Alias {name!r} was specified more than once."
+            raise ValueError(msg)
+        names.add(name)
+    return aliases
+
+
 @dataclass(frozen=True)
 class ModuleSpec:
     """Data required to render one versioned environment modulefile.
@@ -66,6 +94,7 @@ class ModuleSpec:
         install_hint: Optional installation command or note shown in
             `module help`.
         environment: Environment variables exported when the module loads.
+        aliases: Shell aliases defined when the module loads.
     """
 
     name: str
@@ -77,6 +106,7 @@ class ModuleSpec:
     homepage: str | None = None
     install_hint: str | None = None
     environment: tuple[tuple[str, str], ...] = ()
+    aliases: tuple[tuple[str, str], ...] = ()
 
     @property
     def module_path(self) -> str:
@@ -123,6 +153,7 @@ def render_modulefile(spec: ModuleSpec) -> str:
         lines.append(f"family {tcl_quote(spec.family)}")
 
     environment = parse_environment_variables(tuple(f"{name}={value}" for name, value in spec.environment))
+    aliases = validate_aliases(spec.aliases)
 
     lines.extend(
         [
@@ -135,6 +166,7 @@ def render_modulefile(spec: ModuleSpec) -> str:
         ]
     )
     lines.extend(f"setenv {name} {tcl_quote(value)}" for name, value in environment)
+    lines.extend(f"set-alias {tcl_quote(name)} {tcl_quote(value)}" for name, value in aliases)
     lines.append("")
     return "\n".join(lines)
 

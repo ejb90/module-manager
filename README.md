@@ -74,6 +74,7 @@ Add `--env NAME=VALUE` to any deploy command to export a variable from the
 generated modulefile. For `deploy-env`, variables can also be declared in the
 manifest's `[environment]` table. Values in that table expand `$NAME` and
 `${NAME}` references from the environment running `module-manager`.
+Collective manifests can also define shell aliases in an `[alias]` table.
 
 Every completed deployment includes a `module-manager.lock.json` file with its
 metadata and generated-file checksums. Use `module-manager list --prefix PATH`,

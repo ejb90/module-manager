@@ -104,3 +104,12 @@ manifest expands `$NAME` and `${NAME}` references from the environment running
 [environment]
 DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
 ```
+
+Collective manifests can also define shell aliases. Alias commands remain
+literal until the alias is invoked.
+
+```toml
+[alias]
+lint = "ruff check ."
+show-cache = "echo $DEV_TOOLS_CACHE"
+```

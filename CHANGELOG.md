@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [0.19.0] - 2026-11-16
 
+### Added
+
+- Add an `[alias]` table to collective manifests for defining shell aliases.
+
 ### Fixed
 
 - Expand `$NAME` and `${NAME}` references in collective manifest

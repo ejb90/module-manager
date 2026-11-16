@@ -897,6 +897,9 @@ module_root = "modules"
 FROM_MANIFEST = "yes"
 FROM_EXPANDED = "$MANIFEST_VALUE"
 
+[alias]
+say-hello = "echo hello"
+
 [[tools]]
 type = "script"
 name = "hello"
@@ -971,6 +974,7 @@ script = "hello.sh"
     assert 'setenv FROM_MANIFEST "yes"' in environment_modulefile
     assert 'setenv FROM_EXPANDED "expanded"' in environment_modulefile
     assert 'setenv FROM_CLI "yes"' in environment_modulefile
+    assert 'set-alias "say-hello" "echo hello"' in environment_modulefile
 
 
 def test_list_show_and_verify_commands_use_deployment_lockfiles() -> None:

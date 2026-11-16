@@ -36,7 +36,7 @@ from module_manager.modulefile import (
 
 def test_tcl_quote_escapes_special_characters() -> None:
     """Tcl quoting should escape characters that affect modulefile parsing."""
-    assert tcl_quote('a "quoted" $value') == '"a \\"quoted\\" \\$value"'
+    assert tcl_quote('a "quoted" $value [command]') == '"a \\"quoted\\" \\$value \\[command\\]"'
 
 
 def test_render_modulefile_exports_path_and_root() -> None:
@@ -71,6 +71,22 @@ def test_render_modulefile_exports_configured_environment_variables() -> None:
 
     assert 'setenv RUFF_CACHE_DIR "/scratch/ruff"' in modulefile
     assert 'setenv MESSAGE "a \\"quote\\" \\$value"' in modulefile
+
+
+def test_render_modulefile_defines_configured_aliases() -> None:
+    """Rendered modulefiles should define configured shell aliases."""
+    modulefile = render_modulefile(
+        ModuleSpec(
+            name="dev-tools",
+            version="1.0.0",
+            root=Path("/prod/tools/dev-tools/1.0.0"),
+            bin_dir=Path("/prod/tools/dev-tools/1.0.0/bin"),
+            aliases=(("ll", "ls -la"), ("show-user", 'echo "$USER" [safe]')),
+        )
+    )
+
+    assert 'set-alias "ll" "ls -la"' in modulefile
+    assert 'set-alias "show-user" "echo \\"\\$USER\\" \\[safe\\]"' in modulefile
 
 
 def test_render_default_version_selects_version() -> None:
@@ -808,6 +824,10 @@ default = false
 DEV_TOOLS_CACHE = "$SCRATCH/dev-tools"
 BRACED_CACHE = "${SCRATCH}/braced"
 
+[alias]
+ll = "ls -la"
+show-cache = "echo $DEV_TOOLS_CACHE"
+
 [[tools]]
 type = "python"
 name = "ruff"
@@ -858,6 +878,7 @@ script = "scripts/helper"
         ("DEV_TOOLS_CACHE", "/scratch/dev-tools"),
         ("BRACED_CACHE", "/scratch/braced"),
     )
+    assert spec.aliases == (("ll", "ls -la"), ("show-cache", "echo $DEV_TOOLS_CACHE"))
     assert spec.tools[0].package == "ruff==0.8.0"
     assert spec.tools[0].with_packages == ("ruff-lsp==0.1",)
     assert spec.tools[0].with_requirements == (str(tmp_path / "requirements.txt"),)
@@ -950,6 +971,36 @@ def test_load_environment_spec_rejects_invalid_manifest_variables(
         load_environment_spec(manifest, variables)
 
 
+@pytest.mark.parametrize(
+    ("alias_table", "message"),
+    [
+        ("[alias]\nll = 42", "alias must be a table of string values"),
+        ('[alias]\n"bad name" = "echo bad"', "Invalid alias name"),
+        ('[alias]\n"" = "echo bad"', "Invalid alias name"),
+    ],
+)
+def test_load_environment_spec_rejects_invalid_aliases(
+    tmp_path: Path,
+    alias_table: str,
+    message: str,
+) -> None:
+    """Collective manifests should reject invalid alias tables.
+
+    Args:
+        tmp_path: Temporary manifest root.
+        alias_table: Alias table content under test.
+        message: Expected validation error text.
+    """
+    manifest = tmp_path / "env.toml"
+    manifest.write_text(
+        f'name = "x"\nversion = "1"\n{alias_table}\n[[tools]]\ntype = "script"\nname = "x"\nscript = "x"',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=message):
+        load_environment_spec(manifest)
+
+
 def test_load_environment_spec_rejects_invalid_tool_entries(tmp_path: Path) -> None:
     """Environment manifests should reject invalid tool tables.
 
@@ -1018,6 +1069,9 @@ def test_deploy_environment_writes_shared_module(tmp_path: Path) -> None:
 name = "dev-tools"
 version = "2026.05"
 
+[alias]
+find-text = "rg --hidden"
+
 [[tools]]
 type = "binary"
 name = "ripgrep"
@@ -1041,6 +1095,8 @@ script = "{script}"
     assert (result.paths.bin_dir / "ripgrep").exists()
     assert (result.paths.bin_dir / "helper").exists()
     assert result.paths.modulefile.exists()
+    assert 'set-alias "find-text" "rg --hidden"' in result.paths.modulefile.read_text(encoding="utf-8")
+    assert load_deployment_lock(result.paths).data["metadata"]["aliases"] == {"find-text": "rg --hidden"}
     assert result.paths.default_version_file is not None
     assert result.paths.default_version_file.exists()
 

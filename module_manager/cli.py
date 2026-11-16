@@ -860,6 +860,7 @@ def deploy_env(
             description=spec.description,
             homepage=spec.homepage,
             environment=tuple(combined_environment.items()),
+            aliases=spec.aliases,
             make_default=spec.make_default if make_default is None else make_default,
         )
 

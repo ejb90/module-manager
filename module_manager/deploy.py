@@ -22,6 +22,7 @@ from .modulefile import (
     parse_environment_variables,
     render_default_version,
     render_modulefile,
+    validate_aliases,
 )
 
 
@@ -195,6 +196,7 @@ class EnvironmentSpec:
         description: Optional environment module description.
         homepage: Optional homepage shown in module help.
         environment: Environment variables exported when the module loads.
+        aliases: Shell aliases defined when the module loads.
         make_default: Whether to make this environment version the default.
     """
 
@@ -206,6 +208,7 @@ class EnvironmentSpec:
     description: str | None = None
     homepage: str | None = None
     environment: tuple[tuple[str, str], ...] = ()
+    aliases: tuple[tuple[str, str], ...] = ()
     make_default: bool = True
 
 
@@ -1075,6 +1078,33 @@ def optional_environment(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
         raise TypeError(str(error)) from error
 
 
+def optional_aliases(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Read aliases from a collective environment manifest.
+
+    Args:
+        data: Top-level manifest data.
+
+    Returns:
+        Validated alias name and command pairs.
+
+    Raises:
+        TypeError: If the alias table is not a mapping of valid names to
+            strings.
+    """
+    value = data.get("alias")
+    if value is None:
+        return ()
+    if not isinstance(value, dict) or not all(
+        isinstance(name, str) and isinstance(item, str) for name, item in value.items()
+    ):
+        msg = "alias must be a table of string values"
+        raise TypeError(msg)
+    try:
+        return validate_aliases(tuple(value.items()))
+    except ValueError as error:
+        raise TypeError(str(error)) from error
+
+
 def optional_bool(data: dict[str, Any], key: str, default: bool) -> bool:
     """Read an optional boolean from manifest data.
 
@@ -1261,6 +1291,7 @@ def load_environment_spec(path: Path, variables: Mapping[str, str] | None = None
         description=optional_string(data, "description"),
         homepage=optional_string(data, "homepage"),
         environment=optional_environment(data),
+        aliases=optional_aliases(data),
         make_default=optional_bool(data, "default", True),
     )
 
@@ -1521,6 +1552,7 @@ def deploy_environment(
                 homepage=spec.homepage,
                 install_hint=install_hint,
                 environment=spec.environment,
+                aliases=spec.aliases,
             )
         )
         write_text(paths.modulefile, modulefile)
@@ -1531,6 +1563,7 @@ def deploy_environment(
             kind="environment",
             metadata={
                 "environment": dict(spec.environment),
+                "aliases": dict(spec.aliases),
                 "tools": [
                     {
                         "name": tool.name,
